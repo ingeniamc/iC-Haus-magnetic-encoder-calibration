@@ -1,6 +1,7 @@
 [project]
+dynamic = ["version"]
+
 name = "ic-haus-magnetic-encoder-calibration"
-version = "0.1.0"
 description = "iC-Haus Magnetic Encoder calibration library using the DLL communication with summit drives"
 authors = [
   { name = "Novanta", email = "support@ingeniamc.com" }
@@ -15,11 +16,12 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["setuptools==75.6.0", "setuptools_scm[toml]>=8", "wheel==0.42.0"]
+requires = [
+  "setuptools==75.6.0",
+  "setuptools_scm[toml]>=8",
+  "setuptools_scm_policies @ http://pypi.novanta.com/packages/setuptools_scm_policies-0.1.0.post1.dev3+g65f3585d3-py3-none-any.whl"
+]
 build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ["ic_haus_magnetic_encoder_calibration"]
@@ -27,8 +29,13 @@ include = ["ic_haus_magnetic_encoder_calibration"]
 [tool.setuptools.package-data]
 ic_haus_magnetic_encoder_calibration = ["py.typed"]
 
+[tool.setuptools_scm]
+version_scheme = "nm_version_scheme"
+local_scheme = "nm_local_scheme"
+write_to = "ic_haus_magnetic_encoder_calibration/_version.py"
+
 [tool.poetry]
-version = "0.1.0"
+version = "0.0.0"  # placeholder. Actual version is managed by setuptools_scm.
 
 [[tool.poetry.source]]
 name = "PyPI"

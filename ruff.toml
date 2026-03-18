@@ -1,6 +1,7 @@
 line-length = 100
 target-version = "py312"
 preview = true
+exclude = ["ic_haus_magnetic_encoder_calibration/_version.py"]
 
 [lint]
 pydocstyle.convention = "google"

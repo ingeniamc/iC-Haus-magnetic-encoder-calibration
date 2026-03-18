@@ -10,6 +10,7 @@ build/
 dist*/
 *.egg*
 .ipynb_checkpoints/
+ic_haus_magnetic_encoder_calibration/_version.py
 
 # temp files
 _deps
