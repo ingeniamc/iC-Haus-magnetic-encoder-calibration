@@ -51,6 +51,13 @@ optional = true
 pytest = "==8.4.1"
 pytest-cov = "==7.0.0"
 pytest-mock = "==3.15.1"
+ 
+# Dependencies for build task 
+[tool.poetry.group.build]
+optional = true
+[tool.poetry.group.build.dependencies]
+pyinstaller = {version = "^6.6.0", python = ">=3.9,<3.15"}
+
 
 # -----------------------------------------------------------------------
 #                                   TASKS
@@ -90,4 +97,9 @@ cmd = "mypy ic-haus-magnetic-encoder-calibration"
 # ----------------------------- Run unit tests -----------------------------
 [tool.poe.tasks.tests]
 cmd = "python -I -m pytest tests"
+
+# ----------------------------- PyInstaller CLI build -----------------------------
+[tool.poe.tasks.pyinstaller-cli]
+help = "Build standalone CLI executable with PyInstaller"
+cmd = "pyinstaller ic_haus_magnetic_encoder_calibration.spec"
 
