@@ -14,6 +14,19 @@ dependencies = [
     "numpy>=2.0",
 ]
 
+[build-system]
+requires = ["setuptools==75.6.0", "setuptools_scm[toml]>=8", "wheel==0.42.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["ic_haus_magnetic_encoder_calibration"]
+
+[tool.setuptools.package-data]
+ic_haus_magnetic_encoder_calibration = ["py.typed"]
+
 [tool.poetry]
 version = "0.1.0"
 
@@ -57,20 +70,29 @@ pytest-mock = "==3.15.1"
 optional = true
 [tool.poetry.group.build.dependencies]
 pyinstaller = {version = "^6.6.0", python = ">=3.9,<3.15"}
+twine = "^5.0.0"
 
 
 # -----------------------------------------------------------------------
 #                                   TASKS
 # -----------------------------------------------------------------------
 
+# ----------------------------- Build wheel -----------------------------
+[tool.poe.tasks.build]
+help = "Build wheels"
+sequence = [
+    { cmd = "poetry build -f wheel" },
+    { cmd = "twine check dist/*.whl" }
+]
+
 # ----------------------------- Ruff format -----------------------------
 [tool.poe.tasks.ruff-format-check]
 help = "Format check with ruff"
-cmd = "ruff format --check ic-haus-magnetic-encoder-calibration tests"
+cmd = "ruff format --check ic_haus_magnetic_encoder_calibration tests"
 
 [tool.poe.tasks.ruff-check]
 help = "Check with ruff"
-cmd = "ruff check ic-haus-magnetic-encoder-calibration tests"
+cmd = "ruff check ic_haus_magnetic_encoder_calibration tests"
 
 [tool.poe.tasks.format]
 help     = "Check format"
@@ -79,11 +101,11 @@ sequence = ["ruff-format-check", "ruff-check"]
 # ----------------------------- Ruff reformat -----------------------------
 [tool.poe.tasks.ruff-format]
 help = "Format files with ruff"
-cmd = "ruff format ic-haus-magnetic-encoder-calibration tests"
+cmd = "ruff format ic_haus_magnetic_encoder_calibration tests"
 
 [tool.poe.tasks.ruff-check-fix]
 help = "Fix lint errors"
-cmd = "ruff check --fix ic-haus-magnetic-encoder-calibration tests"
+cmd = "ruff check --fix ic_haus_magnetic_encoder_calibration tests"
 
 [tool.poe.tasks.reformat]
 help     = "Reformat files and fix lint errors"
@@ -92,7 +114,7 @@ sequence = ["ruff-format", "ruff-check-fix"]
 # ----------------------------- Mypy -----------------------------
 [tool.poe.tasks.type]
 help = "Run type checks"
-cmd = "mypy ic-haus-magnetic-encoder-calibration"
+cmd = "mypy ic_haus_magnetic_encoder_calibration"
 
 # ----------------------------- Run unit tests -----------------------------
 [tool.poe.tasks.tests]

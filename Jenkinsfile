@@ -45,6 +45,11 @@ pipeline {
                         batInVenv "poetry sync --no-root --all-groups"
                     }
                 }
+                stage('Build wheel') {
+                    steps {
+                        batInVenv "poetry run poe build"
+                    }
+                }
                 stage('Check formatting') {
                     steps {
                         batInVenv "poetry run poe format"
@@ -86,6 +91,11 @@ pipeline {
                 stage('Unstash build') {
                     steps {
                         unstash 'build'
+                    }
+                }
+                stage('Publish Novanta PyPi') {
+                    steps {
+                        publishNovantaPyPi('dist/*.whl')
                     }
                 }
                 stage('Publish dist') {
