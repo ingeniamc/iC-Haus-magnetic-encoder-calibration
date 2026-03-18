@@ -46,9 +46,6 @@ pipeline {
                     }
                 }
                 stage('Build wheel') {
-                    environment {
-                        SETUPTOOLS_SCM_PRETEND_VERSION = getPythonVersionForPr()
-                    }
                     steps {
                         batInVenv "poetry run poe build"
                     }
