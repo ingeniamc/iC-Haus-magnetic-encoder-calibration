@@ -1,0 +1,40 @@
+# editors
+**/*.swp
+.idea
+.vscode
+
+# python files
+**/*.pyc
+**/__pycache__
+build/
+dist*/
+*.egg*
+.ipynb_checkpoints/
+
+# temp files
+_deps
+_install
+_build
+*.o
+out.txt
+
+# os
+.DS_Store
+
+# Pipenv and venv
+/Pipfile.lock
+/.venv*
+
+# Test files
+/pytest_reports/
+/.coverage
+/coverage.xml
+
+# Documentation
+/_docs
+
+# Environment
+/.env
+
+# CSV output files
+*.csv
