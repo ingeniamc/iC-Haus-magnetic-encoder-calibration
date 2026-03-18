@@ -52,6 +52,11 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
+"ic-haus-magnetic-encoder-calibration/*" = [
+    "N999",  # Invalid module name (package directory has hyphens)
+    "T20",  # flake8 prints (calibration scripts use prints for logging)
+]
 "tests/*" = [
+    "D", # Docstring rules
     "DOC501", # Missing documentation of raises
 ]
