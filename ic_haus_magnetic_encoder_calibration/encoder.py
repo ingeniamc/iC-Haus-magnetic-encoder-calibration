@@ -99,6 +99,8 @@ class ICMURegisterState:
 class CalibrationResult:
     """Results of a single calibration iteration for one encoder."""
 
+    success: bool = False
+    iterations: int = 0
     master_adjustments: mu_3sl.AnalogTrackAdjustments | None = None
     nonius_adjustments: mu_3sl.AnalogTrackAdjustments | None = None
     spo_base: int = 0
