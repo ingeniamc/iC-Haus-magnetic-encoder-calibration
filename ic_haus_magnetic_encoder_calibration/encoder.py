@@ -1,0 +1,437 @@
+"""Single iC-MU encoder: BiSS operations, register management, calibration math.
+
+Each ``Encoder`` instance wraps one physical iC-MU encoder connected via
+a BiSS channel on a Novanta/Ingenia drive. It handles:
+
+* Reading the chip revision
+* Saving/restoring drive encoder frame configuration
+* Saving/restoring iC-MU calibration-mode registers
+* Reading/writing analog and nonius (SPO) parameters
+* Saving calibration results to EEPROM
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+import mu_3sl_interface as mu_3sl
+
+from .drive_encoder_registers import (
+    CALIB_FRAME_SIZE,
+    CALIB_POS_BITS,
+    CALIB_POS_ST_BITS,
+    CALIB_POS_START_BIT,
+    DriveEncoderRegisters,
+    get_encoder_registers,
+)
+from .ic_haus_registers import (
+    CMD,
+    ENAC,
+    GX_M,
+    GX_N,
+    HARD_REV,
+    MODEA_MODEB,
+    MPC,
+    OUT_LSB_ST,
+    OUT_MSB_ZERO,
+    PH_M,
+    PH_N,
+    SPO_REGISTERS,
+    STATUS1,
+    TEST,
+    VOSC_M,
+    VOSC_N,
+    VOSS_M,
+    VOSS_N,
+    BissAction,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    from ingeniamotion import MotionController
+
+    from .ic_haus_registers import ICHausRegister
+
+logger = logging.getLogger(__name__)
+
+_BISS_SETTLE_S = 0.1
+
+# Calibration field values for iC-MU registers
+_CALIB_OUT_MSB = 0x0E
+_CALIB_OUT_LSB = 0x00
+_CALIB_OUT_ZERO_BISS = 0x00
+_CALIB_MODE_ST_RAW = 0x02
+_CALIB_MODEA_BISS = 0x02
+_CALIB_TEST = 0x00
+
+# EEPROM command
+_CMD_WRITE_ALL = 0x01
+
+
+@dataclass(frozen=True)
+class DriveFrameConfig:
+    """Drive encoder BiSS frame configuration."""
+
+    frame_size: int
+    pos_bits: int
+    pos_st_bits: int
+    pos_start_bit: int
+
+
+@dataclass(frozen=True)
+class ICMURegisterState:
+    """Snapshot of iC-MU configuration registers affected by calibration."""
+
+    enac: int
+    modea_modeb: int
+    out_msb_zero: int
+    out_lsb_st: int
+    test: int
+    mpc: int
+
+
+@dataclass
+class CalibrationResult:
+    """Results of a single calibration iteration for one encoder."""
+
+    master_adjustments: mu_3sl.AnalogTrackAdjustments | None = None
+    nonius_adjustments: mu_3sl.AnalogTrackAdjustments | None = None
+    spo_base: int = 0
+    spo_n: list[int] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Encoder class
+# ---------------------------------------------------------------------------
+
+
+class Encoder:
+    """Wraps a single iC-MU encoder connected via BiSS.
+
+    Args:
+        mc: Connected MotionController instance.
+        encoder_number: Encoder channel (1 or 2).
+        axis: Drive axis number.
+    """
+
+    def __init__(
+        self,
+        mc: MotionController,
+        encoder_number: int,
+        *,
+        axis: int = 1,
+    ) -> None:
+        self._mc = mc
+        self._number = encoder_number
+        self._axis = axis
+        self._regs = get_encoder_registers(encoder_number)
+
+    @property
+    def number(self) -> int:
+        """Encoder channel number (1 or 2)."""
+        return self._number
+
+    @property
+    def regs(self) -> DriveEncoderRegisters:
+        """Drive register names for this encoder."""
+        return self._regs
+
+    # -- Drive register helpers --
+
+    def _read_drive(self, name: str) -> int:
+        return int(self._mc.communication.get_register(name, axis=self._axis))
+
+    def _write_drive(self, name: str, value: int) -> None:
+        self._mc.communication.set_register(name, value, axis=self._axis)
+
+    # -- iC-MU BiSS register helpers --
+
+    def _read_ic(self, reg: ICHausRegister) -> int:
+        """Read an 8-bit value from an iC-MU register via BiSS bidirectional.
+
+        Returns:
+            Register value (masked to 0xFF).
+        """
+        regs = self._regs
+        ax = self._axis
+        self._mc.communication.set_register(regs.itf_ctl, BissAction.NO_ACTION, axis=ax)
+        self._mc.communication.set_register(regs.itf_addr, reg.address, axis=ax)
+        self._mc.communication.set_register(regs.itf_ctl, BissAction.READ, axis=ax)
+        time.sleep(_BISS_SETTLE_S)
+        return int(self._mc.communication.get_register(regs.itf_data, axis=ax)) & 0xFF
+
+    def _write_ic(self, reg: ICHausRegister, value: int) -> None:
+        """Write an 8-bit value to an iC-MU register via BiSS bidirectional."""
+        regs = self._regs
+        ax = self._axis
+        self._mc.communication.set_register(regs.itf_ctl, BissAction.NO_ACTION, axis=ax)
+        self._mc.communication.set_register(regs.itf_addr, reg.address, axis=ax)
+        self._mc.communication.set_register(regs.itf_data, value & 0xFF, axis=ax)
+        self._mc.communication.set_register(regs.itf_ctl, BissAction.WRITE, axis=ax)
+        time.sleep(_BISS_SETTLE_S)
+
+    # -- Step 1: Revision --
+
+    def read_revision(self) -> mu_3sl.Revision:
+        """Read the iC-MU hardware revision code.
+
+        Returns:
+            Revision enum value.
+
+        Raises:
+            RuntimeError: If the chip does not respond (NONE).
+        """
+        raw = self._read_ic(HARD_REV)
+        revision = mu_3sl.Revision(raw)
+        if revision is mu_3sl.Revision.NONE:
+            msg = f"Encoder {self._number}: unable to read revision (got 0x00)."
+            raise RuntimeError(msg)
+        logger.info("Encoder %d: revision %s (0x%02X)", self._number, revision.name, raw)
+        return revision
+
+    # -- Drive encoder frame config --
+
+    def get_drive_config(self) -> DriveFrameConfig:
+        """Read current drive encoder frame configuration.
+
+        Returns:
+            Current frame settings.
+        """
+        r = self._regs
+        return DriveFrameConfig(
+            frame_size=self._read_drive(r.frame_size),
+            pos_bits=self._read_drive(r.pos_bits),
+            pos_st_bits=self._read_drive(r.pos_st_bits),
+            pos_start_bit=self._read_drive(r.pos_start_bit),
+        )
+
+    def set_drive_config(self, config: DriveFrameConfig) -> None:
+        """Write drive encoder frame configuration.
+
+        Args:
+            config: Frame settings to apply.
+        """
+        r = self._regs
+        self._write_drive(r.frame_size, config.frame_size)
+        self._write_drive(r.pos_bits, config.pos_bits)
+        self._write_drive(r.pos_st_bits, config.pos_st_bits)
+        self._write_drive(r.pos_start_bit, config.pos_start_bit)
+        logger.info("Encoder %d: drive frame config applied.", self._number)
+
+    # -- iC-MU register config --
+
+    def get_ic_config(self) -> ICMURegisterState:
+        """Read the iC-MU configuration registers affected by calibration.
+
+        Returns:
+            Current register values.
+        """
+        return ICMURegisterState(
+            enac=self._read_ic(ENAC),
+            modea_modeb=self._read_ic(MODEA_MODEB),
+            out_msb_zero=self._read_ic(OUT_MSB_ZERO),
+            out_lsb_st=self._read_ic(OUT_LSB_ST),
+            test=self._read_ic(TEST),
+            mpc=self._read_ic(MPC),
+        )
+
+    def set_ic_config(self, state: ICMURegisterState) -> None:
+        """Write iC-MU configuration registers.
+
+        Args:
+            state: Register values to apply.
+        """
+        self._write_ic(ENAC, state.enac)
+        self._write_ic(MODEA_MODEB, state.modea_modeb)
+        self._write_ic(OUT_MSB_ZERO, state.out_msb_zero)
+        self._write_ic(OUT_LSB_ST, state.out_lsb_st)
+        self._write_ic(TEST, state.test)
+        self._write_ic(MPC, state.mpc)
+        logger.info("Encoder %d: iC-MU config registers applied.", self._number)
+
+    # -- Calibration mode --
+
+    def configure_in_calibration_mode(self) -> int:
+        """Configure iC-MU registers and drive frame for calibration.
+
+        Reads the current iC-MU state, writes calibration values and
+        sets the drive encoder frame for raw data capture.  Use
+        ``get_ic_config`` / ``get_drive_config`` before calling this
+        method if you need to restore the original state later.
+
+        Returns:
+            Number of master periods (2^MPC).
+        """
+        enac_orig = self._read_ic(ENAC)
+        modea_orig = self._read_ic(MODEA_MODEB)
+        out_orig = self._read_ic(OUT_MSB_ZERO)
+        lsb_orig = self._read_ic(OUT_LSB_ST)
+        test_orig = self._read_ic(TEST)
+        mpc_orig = self._read_ic(MPC)
+
+        # Enable analog calibration (ENAC bit)
+        enac_new = ENAC.field("enac").insert(enac_orig, 1)
+        if enac_new != enac_orig:
+            self._write_ic(ENAC, enac_new)
+
+        # Set interface mode to BiSS
+        modea_new = MODEA_MODEB.field("modea").insert(modea_orig, _CALIB_MODEA_BISS)
+        if modea_new != modea_orig:
+            self._write_ic(MODEA_MODEB, modea_new)
+
+        # OUT_MSB + OUT_ZERO
+        out = OUT_MSB_ZERO.field("out_zero").insert(out_orig, _CALIB_OUT_ZERO_BISS)
+        out = OUT_MSB_ZERO.field("out_msb").insert(out, _CALIB_OUT_MSB)
+        if out != out_orig:
+            self._write_ic(OUT_MSB_ZERO, out)
+
+        # OUT_LSB + MODE_ST = RAW
+        lsb = OUT_LSB_ST.field("mode_st").insert(lsb_orig, _CALIB_MODE_ST_RAW)
+        lsb = OUT_LSB_ST.field("out_lsb").insert(lsb, _CALIB_OUT_LSB)
+        if lsb != lsb_orig:
+            self._write_ic(OUT_LSB_ST, lsb)
+
+        # Clear test register
+        if test_orig != _CALIB_TEST:
+            self._write_ic(TEST, _CALIB_TEST)
+
+        # MPC: if 0x0C set to 0x0B
+        mpc_val = MPC.field("mpc").extract(mpc_orig)
+        if mpc_val == 0x0C:
+            new_mpc = MPC.field("mpc").insert(mpc_orig, 0x0B)
+            self._write_ic(MPC, new_mpc)
+            mpc_val = 0x0B
+
+        # Configure drive frame for calibration
+        r = self._regs
+        self._write_drive(r.frame_size, CALIB_FRAME_SIZE)
+        self._write_drive(r.pos_bits, CALIB_POS_BITS)
+        self._write_drive(r.pos_st_bits, CALIB_POS_ST_BITS)
+        self._write_drive(r.pos_start_bit, CALIB_POS_START_BIT)
+
+        n_master_periods = 1 << mpc_val
+        logger.info(
+            "Encoder %d: calibration mode configured (MPC=%d, periods=%d).",
+            self._number,
+            mpc_val,
+            n_master_periods,
+        )
+        return n_master_periods
+
+    @contextmanager
+    def in_calibration_mode(self) -> Generator[int]:
+        """Context manager: save config, enter calibration, restore on exit.
+
+        Saves the drive encoder frame configuration and iC-MU register
+        state, configures both for calibration, and restores everything
+        when the context exits (even on exception).
+
+        Yields:
+            Number of master periods (2^MPC).
+        """
+        drive_config = self.get_drive_config()
+        ic_state = self.get_ic_config()
+        n_master_periods = self.configure_in_calibration_mode()
+        try:
+            yield n_master_periods
+        finally:
+            self.set_ic_config(ic_state)
+            self.set_drive_config(drive_config)
+
+    # -- Analog parameters --
+
+    def read_analog_adjustments(
+        self,
+    ) -> tuple[mu_3sl.AnalogTrackAdjustments, mu_3sl.AnalogTrackAdjustments]:
+        """Read current analog calibration parameters from chip.
+
+        Returns:
+            Tuple of (master, nonius) AnalogTrackAdjustments.
+        """
+        master = mu_3sl.AnalogTrackAdjustments(
+            self._read_ic(GX_M),
+            self._read_ic(VOSS_M),
+            self._read_ic(VOSC_M),
+            self._read_ic(PH_M),
+        )
+        nonius = mu_3sl.AnalogTrackAdjustments(
+            self._read_ic(GX_N),
+            self._read_ic(VOSS_N),
+            self._read_ic(VOSC_N),
+            self._read_ic(PH_N),
+        )
+        return master, nonius
+
+    def write_analog_adjustments(
+        self,
+        master: mu_3sl.AnalogTrackAdjustments,
+        nonius: mu_3sl.AnalogTrackAdjustments,
+    ) -> None:
+        """Write analog calibration parameters to chip.
+
+        Args:
+            master: Master track adjustments.
+            nonius: Nonius track adjustments.
+        """
+        self._write_ic(GX_M, master.cosine_gain)
+        self._write_ic(VOSS_M, master.sine_offset)
+        self._write_ic(VOSC_M, master.cosine_offset)
+        self._write_ic(PH_M, master.phase)
+        self._write_ic(GX_N, nonius.cosine_gain)
+        self._write_ic(VOSS_N, nonius.sine_offset)
+        self._write_ic(VOSC_N, nonius.cosine_offset)
+        self._write_ic(PH_N, nonius.phase)
+
+    # -- Nonius (SPO) parameters --
+
+    def write_nonius_parameters(
+        self,
+        table_params: mu_3sl.NoniusTrackOffsetTableParameters,
+    ) -> None:
+        """Write nonius track offset table to chip.
+
+        Args:
+            table_params: SPO_BASE + SPO_0..SPO_14 from the DLL.
+        """
+        spo_base = table_params.spo_base
+        spo_n = [table_params.spo_n[i] for i in range(15)]
+
+        # First register (0x52): spo_base[3:0] + spo_0[7:4]
+        reg = SPO_REGISTERS[0]
+        val = reg.field("spo_base").insert(0, spo_base)
+        val = reg.field("spo_0").insert(val, spo_n[0])
+        self._write_ic(reg, val)
+
+        # Remaining registers (0x53-0x59): each packs two 4-bit SPO values —
+        # odd-indexed in the low nibble [3:0], even-indexed in the high [7:4].
+        for i, reg in enumerate(SPO_REGISTERS[1:]):
+            odd = 2 * i + 1
+            even = 2 * i + 2
+            val = reg.field(f"spo_{odd}").insert(0, spo_n[odd])
+            val = reg.field(f"spo_{even}").insert(val, spo_n[even])
+            self._write_ic(reg, val)
+
+    # -- EEPROM --
+
+    def save_to_eeprom(self) -> bool:
+        """Issue WRITE_ALL to save configuration to iC-MU EEPROM.
+
+        Returns:
+            True on success, False on error.
+        """
+        self._write_ic(CMD, _CMD_WRITE_ALL)
+        time.sleep(1.0)
+        status = self._read_ic(STATUS1)
+        if STATUS1.field("epr_err").extract(status):
+            logger.error("Encoder %d: EEPROM write error (EPR_ERR).", self._number)
+            return False
+        if STATUS1.field("crc_err").extract(status):
+            logger.error("Encoder %d: CRC error after EEPROM write.", self._number)
+            return False
+        logger.info("Encoder %d: EEPROM saved successfully.", self._number)
+        return True
