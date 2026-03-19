@@ -39,3 +39,6 @@ out.txt
 
 # CSV output files
 *.csv
+
+# Test setups (machine-specific)
+/tests/setups/tests_setup.py

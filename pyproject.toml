@@ -71,6 +71,7 @@ optional = true
 pytest = "==8.4.1"
 pytest-cov = "==7.0.0"
 pytest-mock = "==3.15.1"
+summit-testing-framework = {version = "==0.2.0.post232+develop.4b9deb4"}
  
 # Dependencies for build task 
 [tool.poetry.group.build]
@@ -125,10 +126,18 @@ cmd = "mypy ic_haus_magnetic_encoder_calibration"
 
 # ----------------------------- Run unit tests -----------------------------
 [tool.poe.tasks.tests]
-cmd = "python -I -m pytest tests"
+cmd = "python -I -m pytest tests -m 'not hardware'"
 
 # ----------------------------- PyInstaller CLI build -----------------------------
 [tool.poe.tasks.pyinstaller-cli]
 help = "Build standalone CLI executable with PyInstaller"
 cmd = "pyinstaller ic_haus_magnetic_encoder_calibration.spec"
+
+# -----------------------------------------------------------------------
+#                              PYTEST CONFIG
+# -----------------------------------------------------------------------
+[tool.pytest.ini_options]
+markers = [
+    "hardware: Tests that require a physical drive (excluded from CI)",
+]
 
