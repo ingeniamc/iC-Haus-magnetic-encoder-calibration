@@ -99,8 +99,6 @@ class ICMURegisterState:
 class CalibrationResult:
     """Results of a single calibration iteration for one encoder."""
 
-    success: bool = False
-    iterations: int = 0
     master_adjustments: mu_3sl.AnalogTrackAdjustments | None = None
     nonius_adjustments: mu_3sl.AnalogTrackAdjustments | None = None
     spo_base: int = 0
@@ -165,7 +163,11 @@ class Encoder:
         self._mc.communication.set_register(regs.itf_addr, reg.address, axis=ax)
         self._mc.communication.set_register(regs.itf_ctl, BissAction.READ, axis=ax)
         time.sleep(_BISS_SETTLE_S)
-        return int(self._mc.communication.get_register(regs.itf_data, axis=ax)) & 0xFF
+        raw = int(self._mc.communication.get_register(regs.itf_data, axis=ax)) & 0xFF
+        logger.debug(
+            "Encoder %d: _read_ic(0x%02X) → 0x%02X", self._number, reg.address, raw,
+        )
+        return raw
 
     def _write_ic(self, reg: ICHausRegister, value: int) -> None:
         """Write an 8-bit value to an iC-MU register via BiSS bidirectional."""
@@ -189,6 +191,9 @@ class Encoder:
             RuntimeError: If the chip does not respond (NONE).
         """
         raw = self._read_ic(HARD_REV)
+        logger.debug(
+            "Encoder %d: HARD_REV(0x%02X) raw=0x%02X", self._number, HARD_REV.address, raw,
+        )
         revision = mu_3sl.Revision(raw)
         if revision is mu_3sl.Revision.NONE:
             msg = f"Encoder {self._number}: unable to read revision (got 0x00)."

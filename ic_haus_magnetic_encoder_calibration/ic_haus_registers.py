@@ -168,13 +168,36 @@ OUT_LSB_ST = ICHausRegister(
 TEST = ICHausRegister(address=0x18, name="Test mode")
 
 # SPO (nonius offset) registers
-SPO_BASE_0 = ICHausRegister(
-    address=0x52,
-    name="SPO base / offset 0",
-    spo_base=ICHausRegisterField.from_bits(low=0, high=3, name="SPO base value"),
-    spo_0=ICHausRegisterField.from_bits(low=4, high=7, name="SPO offset 0"),
-)
-SPO_13_14 = ICHausRegister(address=0x59, name="SPO offsets 13-14")
+# The iC-MU packs two 4-bit SPO values per 8-bit register:
+#   low nibble [3:0] = odd-indexed offset, high nibble [7:4] = even-indexed offset.
+# Register 0x52 is special: low = SPO_BASE, high = SPO_0.
+SPO_REGISTERS: list[ICHausRegister] = [
+    ICHausRegister(
+        address=0x52,
+        name="SPO base / offset 0",
+        spo_base=ICHausRegisterField.from_bits(low=0, high=3, name="SPO base value"),
+        spo_0=ICHausRegisterField.from_bits(low=4, high=7, name="SPO offset 0"),
+    ),
+    *[
+        ICHausRegister(
+            address=0x53 + i,
+            name=f"SPO offsets {2 * i + 1}-{2 * i + 2}",
+            **{
+                f"spo_{2 * i + 1}": ICHausRegisterField.from_bits(
+                    low=0,
+                    high=3,
+                    name=f"SPO offset {2 * i + 1}",
+                ),
+                f"spo_{2 * i + 2}": ICHausRegisterField.from_bits(
+                    low=4,
+                    high=7,
+                    name=f"SPO offset {2 * i + 2}",
+                ),
+            },
+        )
+        for i in range(7)
+    ],
+]
 
 # Read-only / command / status
 HARD_REV = ICHausRegister(address=0x74, name="Hardware revision")
