@@ -7,7 +7,7 @@ authors = [
   { name = "Novanta", email = "support@ingeniamc.com" }
 ]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "ingeniamotion>=0.9.1",
     "matplotlib>=3.9",
@@ -72,6 +72,7 @@ pytest = "==8.4.1"
 pytest-cov = "==7.0.0"
 pytest-mock = "==3.15.1"
 summit-testing-framework = {version = "==0.2.0.post232+develop.4b9deb4"}
+virtual-drive = {version = "==0.0.post535+mot3.5320.connection.permanently.3012679"}
  
 # Dependencies for build task 
 [tool.poetry.group.build]
@@ -126,7 +127,7 @@ cmd = "mypy ic_haus_magnetic_encoder_calibration"
 
 # ----------------------------- Run unit tests -----------------------------
 [tool.poe.tasks.tests]
-cmd = "python -I -m pytest tests -m 'not hardware'"
+cmd = "python -I -m pytest tests -m \"not hardware\""
 
 # ----------------------------- PyInstaller CLI build -----------------------------
 [tool.poe.tasks.pyinstaller-cli]
