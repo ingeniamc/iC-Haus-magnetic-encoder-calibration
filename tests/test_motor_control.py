@@ -1,6 +1,11 @@
-import pytest
 import time
+
+import pytest
+
+from ic_haus_magnetic_encoder_calibration.encoder import Encoder
+from ic_haus_magnetic_encoder_calibration.ic_haus_registers import CFGEW
 from ic_haus_magnetic_encoder_calibration.motor_control import MotorControl
+
 
 @pytest.fixture
 def motor(mock_mc):
@@ -35,6 +40,24 @@ class TestStartMotor:
         # Current ramp: 10 steps of set_current_quadrature
         assert mock_mc.motion.set_current_quadrature.call_count == 10
 
+    def test_current_ramp_before_generator(self, motor, mock_mc) -> None:
+        """Current must be ramped before the saw-tooth starts."""
+        mock_mc.servos = {"default": mock_mc}
+        mock_mc.dictionary.is_safe = False
+        call_log: list[str] = []
+        mock_mc.motion.set_current_quadrature.side_effect = (
+            lambda *_a, **_k: call_log.append("current")
+        )
+        mock_mc.motion.internal_generator_saw_tooth_move.side_effect = (
+            lambda *_a, **_k: call_log.append("saw_tooth")
+        )
+
+        motor.start_motor()
+
+        saw_idx = call_log.index("saw_tooth")
+        assert call_log.count("current") == 10
+        assert all(c == "current" for c in call_log[:saw_idx])
+
 
 class TestStartFsoe:
     def test_raises_when_no_fsoe(self, motor, mock_mc) -> None:
@@ -59,7 +82,8 @@ class TestStartFsoe:
         handler.configure_pdo_maps.assert_called_once()
         handler.set_pdo_maps_to_slave.assert_called_once()
         handler.write_safe_parameters.assert_called_once()
-        mock_mc.fsoe.start_master.assert_called_once_with(start_pdos=True)
+        mock_mc.fsoe.start_master.assert_called_once_with(start_pdos=False)
+        mock_mc.capture.pdo.start_pdos.assert_called_once()
         mock_mc.fsoe.wait_for_state_data.assert_called_once_with(timeout=15)
         handler.sto_deactivate.assert_called_once()
         handler.ss1_deactivate.assert_called_once()
@@ -125,9 +149,8 @@ class TestRunningContextManager:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = False
 
-        with pytest.raises(ValueError, match="test error"):
-            with motor.running():
-                raise ValueError("test error")
+        with pytest.raises(ValueError, match="test error"), motor.running():
+            raise ValueError("test error")
 
         mock_mc.motion.motor_disable.assert_called_once()
 
@@ -139,8 +162,29 @@ class TestRunningContextManager:
 
 @pytest.fixture
 def hw_motor(mc):
-    """Create a MotorControl using the real MotionController."""
+    """Create a MotorControl using the real MotionController.
+
+    Returns:
+        A MotorControl configured for axis 1.
+    """
     return MotorControl(mc, axis=1)
+
+
+@pytest.fixture
+def hw_encoder(mc):
+    """Prepare encoder for hardware motor tests.
+
+    Ensures the encoder is in normal ABS mode (not leftover RAW from a
+    crash) and suppresses ERR/WRN flags that an uncalibrated encoder
+    asserts, which would otherwise cause the drive to fault with 0x7380.
+
+    Returns:
+        An Encoder with normal mode restored and error flags suppressed.
+    """
+    enc = Encoder(mc, encoder_number=1, axis=1)
+    enc.ensure_normal_mode()
+    enc._write_ic(CFGEW, 0xFF)
+    return enc
 
 
 @pytest.mark.hardware
@@ -161,12 +205,9 @@ class TestFsoeLifecycleHardware:
 
 
 @pytest.mark.hardware
+@pytest.mark.usefixtures(hw_encoder.__name__)
 class TestInternalGeneratorHardware:
     def test_start_and_stop_with_generator(self, hw_motor) -> None:
         hw_motor.configure_internal_generator()
         with hw_motor.running():
             time.sleep(5)  # Let the motor spin
-            
-
-
-

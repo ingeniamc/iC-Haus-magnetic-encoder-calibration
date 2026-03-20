@@ -52,5 +52,3 @@ class TestDriveEncoderRegistersFields:
         assert "BISS2" in r.itf_data
         assert "BISS2" in r.itf_ctl
         assert "BISS2" in r.pos_value
-
-

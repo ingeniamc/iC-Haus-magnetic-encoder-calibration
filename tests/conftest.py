@@ -10,5 +10,9 @@ pytest_plugins = [
 
 @pytest.fixture
 def mock_mc(mocker):
-    """MagicMock MotionController for unit tests."""
+    """MagicMock MotionController for unit tests.
+
+    Returns:
+        A MagicMock instance.
+    """
     return mocker.MagicMock()

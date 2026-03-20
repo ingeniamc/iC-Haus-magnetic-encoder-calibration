@@ -148,6 +148,10 @@ MODEA_MODEB = ICHausRegister(
     name="Mode A / Mode B",
     modea=ICHausRegisterField.from_bits(low=0, high=2, name="Interface mode A"),
 )
+CFGEW = ICHausRegister(
+    address=0x0C,
+    name="Status config for E/W bits",
+)
 MPC = ICHausRegister(
     address=0x0F,
     name="Master periods per revolution",

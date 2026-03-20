@@ -92,7 +92,7 @@ class TestGetICConfig:
     def test_roundtrip_preserves_values(self, encoder, mock_mc) -> None:
         """get_ic_config → set_ic_config writes back the exact same register bytes."""
         mock_mc.communication.get_register.side_effect = [
-            0x80, 0x02, 0xCE, 0x20, 0x00, 0x05,
+            0x80, 0x02, 0xCE, 0x20, 0x00, 0x05, 0x00,
         ]
         state = encoder.get_ic_config()
 
@@ -104,13 +104,13 @@ class TestGetICConfig:
             for c in mock_mc.communication.set_register.call_args_list
             if c.args[0] == ENCODER_1_REGS.itf_data
         ]
-        assert data_writes == [0x80, 0x02, 0xCE, 0x20, 0x00, 0x05]
+        assert data_writes == [0x80, 0x02, 0xCE, 0x20, 0x00, 0x05, 0x00]
 
 
 class TestInCalibrationModeContextManager:
     """Context manager must always restore config, even on exception."""
 
-    def test_restores_on_exception(self, encoder, mock_mc, mocker) -> None:
+    def test_restores_on_exception(self, encoder, mocker) -> None:
         saved_drive = mocker.MagicMock(name="DriveConfig")
         saved_ic = mocker.MagicMock(name="ICConfig")
         mocker.patch.object(encoder, "get_drive_config", return_value=saved_drive)
@@ -119,9 +119,8 @@ class TestInCalibrationModeContextManager:
         mocker.patch.object(encoder, "set_ic_config")
         mocker.patch.object(encoder, "set_drive_config")
 
-        with pytest.raises(ValueError, match="test error"):
-            with encoder.in_calibration_mode():
-                raise ValueError("test error")
+        with pytest.raises(ValueError, match="test error"), encoder.in_calibration_mode():
+            raise ValueError("test error")
 
         encoder.set_ic_config.assert_called_once_with(saved_ic)
         encoder.set_drive_config.assert_called_once_with(saved_drive)
@@ -134,7 +133,11 @@ class TestInCalibrationModeContextManager:
 
 @pytest.fixture
 def hw_encoder(mc):
-    """Create an Encoder using the real MotionController provided by summit_testing_framework."""
+    """Create an Encoder using the real MotionController.
+
+    Returns:
+        An Encoder configured for encoder 1 on axis 1.
+    """
     return Encoder(mc, encoder_number=1, axis=1)
 
 

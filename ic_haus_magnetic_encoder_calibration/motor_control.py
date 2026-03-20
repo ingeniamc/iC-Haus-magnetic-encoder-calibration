@@ -11,7 +11,7 @@ import time
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
-from ingeniamotion.enums import GeneratorMode, OperationMode, SensorType
+from ingeniamotion.enums import OperationMode, SensorType
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -21,11 +21,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Internal generator defaults
-_GEN_FREQ = 0.4  # Hz – saw-tooth frequency for internal generator
-_GEN_CURRENT = 8.0  # Amps – 80% of MOT_RATED_CURRENT (10 A)
+DEFAULT_GEN_FREQ = 0.4  # Hz – saw-tooth frequency for internal generator
+DEFAULT_GEN_CURRENT = 8.0  # Amps – 80% of MOT_RATED_CURRENT (10 A)
 _GEN_CYCLES = 100  # number of generator cycles
 _RAMP_STEPS = 10  # number of current ramp steps
 _RAMP_INTERVAL = 0.2  # seconds between ramp steps
+
+# PDO watchdog timeout: raised above the default 100 ms to avoid FSoE PDO
+_PDO_WATCHDOG_TIMEOUT = 0.3  # seconds
 
 
 class MotorControl:
@@ -37,12 +40,23 @@ class MotorControl:
     Args:
         mc: Connected MotionController instance.
         axis: Drive axis number.
+        gen_frequency: Saw-tooth generator frequency in Hz.
+        gen_current: Quadrature current target in amps.
     """
 
-    def __init__(self, mc: MotionController, *, axis: int = 1) -> None:
+    def __init__(
+        self,
+        mc: MotionController,
+        *,
+        axis: int = 1,
+        gen_frequency: float = DEFAULT_GEN_FREQ,
+        gen_current: float = DEFAULT_GEN_CURRENT,
+    ) -> None:
         self._mc = mc
         self._axis = axis
         self._fsoe_active = False
+        self._gen_frequency = gen_frequency
+        self._gen_current = gen_current
 
     @property
     def has_fsoe(self) -> bool:
@@ -74,8 +88,6 @@ class MotorControl:
         """
         if not self.has_fsoe:
             raise RuntimeError("FSoE is not available on this drive.")
-
-        from ingeniamotion.fsoe_master import STOFunction
 
         logger.info("Starting FSoE master (STO bypass)...")
         handler = self._mc.fsoe.create_fsoe_master_handler(use_sra=True)
@@ -110,7 +122,8 @@ class MotorControl:
         handler.write_safe_parameters()
 
         # Start master and PDOs via the high-level API
-        self._mc.fsoe.start_master(start_pdos=True)
+        self._mc.fsoe.start_master(start_pdos=False)
+        self._mc.capture.pdo.start_pdos(watchdog_timeout=_PDO_WATCHDOG_TIMEOUT)
         self._mc.fsoe.wait_for_state_data(timeout=15)
 
         # Exit failsafe mode and deactivate STO/SS1 after DATA state
@@ -138,7 +151,7 @@ class MotorControl:
             self._handler.delete()
             logger.info("FSoE master stopped.")
         except Exception:
-            logger.exception("Error stopping FSoE master.")
+            logger.exception("Error stopping FSoE master")
         self._fsoe_active = False
 
     @contextmanager
@@ -159,34 +172,30 @@ class MotorControl:
 
     # -- Motor control --
 
-    def _set_all_feedback_sensors(self, source: SensorType) -> None:
-        """Set all four feedback sensor registers to *source*."""
-        for reg in (
-            "CL_VEL_FBK_SENSOR",
-            "CL_POS_FBK_SENSOR",
-            "CL_AUX_FBK_SENSOR",
-            "COMMU_ANGLE_SENSOR",
-        ):
-            self._mc.communication.set_register(reg, source, axis=self._axis)
-
     def configure_internal_generator(self) -> None:
         """Configure feedback sensors and current mode for the internal generator.
 
-        Sets the commutation angle sensor to INTGEN so the saw-tooth
-        generator drives the commutation.  Other feedback sensors are set
-        to QEI to avoid CRC errors from the uncalibrated absolute encoder.
-        Sets operation mode to current so the current loop drives the motor.
+        Sets commutation, velocity, and position feedback to INTGEN so the
+        internal saw-tooth generator drives the motor independently of the
+        absolute encoder.  Auxiliary feedback stays on ABS1 so the BiSS
+        interface remains active for iC-MU register communication.
+
+        The drive frame configuration must be updated separately (by the
+        calibrator) to match whatever the encoder currently outputs so that
+        CRC checks pass.
         """
         self._mc.configuration.set_commutation_feedback(
             SensorType.INTGEN, axis=self._axis
         )
-        for setter in (
-            self._mc.configuration.set_reference_feedback,
-            self._mc.configuration.set_velocity_feedback,
-            self._mc.configuration.set_position_feedback,
-            self._mc.configuration.set_auxiliar_feedback,
-        ):
-            setter(SensorType.QEI, axis=self._axis)
+        self._mc.configuration.set_velocity_feedback(
+            SensorType.INTGEN, axis=self._axis
+        )
+        self._mc.configuration.set_position_feedback(
+            SensorType.INTGEN, axis=self._axis
+        )
+        self._mc.configuration.set_auxiliar_feedback(
+            SensorType.ABS1, axis=self._axis
+        )
         self._mc.motion.set_operation_mode(OperationMode.CURRENT, axis=self._axis)
         logger.info("Internal generator mode configured (current mode).")
 
@@ -194,27 +203,33 @@ class MotorControl:
         """Enable the motor and spin using the internal signal generator.
 
         If FSoE is available but not started, it will be started automatically.
-        Uses a saw-tooth internal generator.  The current is ramped up in
-        discrete steps with sleeps between them so FSoE PDO exchanges are
-        not starved.
+        Uses a saw-tooth internal generator.  The current is ramped up first
+        to lock the rotor magnetically, then the saw-tooth generator starts
+        so the field advances from the locked position.  Current ramp uses
+        discrete steps with sleeps to avoid starving FSoE PDO exchanges.
         """
         if self.has_fsoe and not self._fsoe_active:
             self.start_fsoe()
 
+        self._mc.motion.fault_reset(axis=self._axis)
+
         self._mc.motion.motor_enable(axis=self._axis)
 
-        # Configure saw-tooth generator movement and trigger it.
-        self._mc.motion.internal_generator_saw_tooth_move(
-            1, _GEN_CYCLES, _GEN_FREQ, axis=self._axis
-        )
-
-        # Ramp current until it reaches the target for calibration
-        step = _GEN_CURRENT / _RAMP_STEPS
+        # Step 1: Ramp current to full amplitude at a static angle.
+        # This magnetically locks the rotor so it is in sync with the
+        # stator field before we start moving.
+        step = self._gen_current / _RAMP_STEPS
         for i in range(1, _RAMP_STEPS + 1):
             self._mc.motion.set_current_quadrature(
-                step * i, axis=self._axis
+                step * i, axis=self._axis,
             )
             time.sleep(_RAMP_INTERVAL)
+
+        # Step 2: Start the saw-tooth generator *after* the rotor is locked.
+        # The field now advances smoothly from the locked position.
+        self._mc.motion.internal_generator_saw_tooth_move(
+            1, _GEN_CYCLES, self._gen_frequency, axis=self._axis,
+        )
 
         logger.info("Motor started.")
 

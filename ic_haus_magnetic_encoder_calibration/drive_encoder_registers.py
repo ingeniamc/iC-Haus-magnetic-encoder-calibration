@@ -10,11 +10,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-# Drive encoder frame settings for calibration mode
+# Drive encoder frame settings for calibration raw mode.
+# In raw mode the iC-MU outputs 28 position bits (14 master + 14 nonius)
+# followed by ERR + WRN + 6-bit CRC (BiSS-C, poly 0x43) = 36 total SCD bits.
+# POS_START_BIT=8 skips the 8 trailing bits (CRC6 + ERR + WRN).
 CALIB_FRAME_SIZE = 36
 CALIB_POS_BITS = 28
 CALIB_POS_ST_BITS = 28
 CALIB_POS_START_BIT = 8
+
+# Maximum error tolerance during calibration.  Changing the drive frame
+# geometry may cause transient CRC mismatches; a high tolerance prevents
+# the drive from freezing POS_VALUE during the transition.
+CALIB_ERROR_TOLERANCE = 0xFFFF
 
 
 @dataclass(frozen=True)
@@ -29,6 +37,7 @@ class DriveEncoderRegisters:
     pos_bits: str
     pos_st_bits: str
     pos_start_bit: str
+    error_tolerance: str
 
 
 ENCODER_1_REGS = DriveEncoderRegisters(
@@ -40,6 +49,7 @@ ENCODER_1_REGS = DriveEncoderRegisters(
     pos_bits="FBK_BISS1_SSI1_POS_BITS",
     pos_st_bits="FBK_BISS1_SSI1_POS_ST_BITS",
     pos_start_bit="FBK_BISS1_SSI1_POS_START_BIT",
+    error_tolerance="FBK_BISS1_SSI1_ERROR_TOLERANCE",
 )
 
 ENCODER_2_REGS = DriveEncoderRegisters(
@@ -51,6 +61,7 @@ ENCODER_2_REGS = DriveEncoderRegisters(
     pos_bits="FBK_BISS2_POS_BITS",
     pos_st_bits="FBK_BISS2_POS_ST_BITS",
     pos_start_bit="FBK_BISS2_POS_START_BIT",
+    error_tolerance="FBK_BISS2_ERROR_TOLERANCE",
 )
 
 

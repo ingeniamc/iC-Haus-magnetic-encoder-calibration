@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 import mu_3sl_interface as mu_3sl
 
 from .drive_encoder_registers import (
+    CALIB_ERROR_TOLERANCE,
     CALIB_FRAME_SIZE,
     CALIB_POS_BITS,
     CALIB_POS_ST_BITS,
@@ -29,6 +30,7 @@ from .drive_encoder_registers import (
     get_encoder_registers,
 )
 from .ic_haus_registers import (
+    CFGEW,
     CMD,
     ENAC,
     GX_M,
@@ -69,6 +71,12 @@ _CALIB_MODE_ST_RAW = 0x02
 _CALIB_MODEA_BISS = 0x02
 _CALIB_TEST = 0x00
 
+# CFGEW value that suppresses all error/warning sources from the
+# BiSS-C ERR and WRN status bits.  An uncalibrated encoder will
+# otherwise assert ERR=0 (low-active) due to amplitude or internal
+# CRC issues, causing the drive to fault with 0x7380.
+_CALIB_CFGEW_SUPPRESS = 0xFF
+
 # EEPROM command
 _CMD_WRITE_ALL = 0x01
 
@@ -81,6 +89,7 @@ class DriveFrameConfig:
     pos_bits: int
     pos_st_bits: int
     pos_start_bit: int
+    error_tolerance: int
 
 
 @dataclass(frozen=True)
@@ -93,12 +102,15 @@ class ICMURegisterState:
     out_lsb_st: int
     test: int
     mpc: int
+    cfgew: int
 
 
 @dataclass
 class CalibrationResult:
-    """Results of a single calibration iteration for one encoder."""
+    """Results of calibration for one encoder."""
 
+    success: bool = True
+    iterations: int = 0
     master_adjustments: mu_3sl.AnalogTrackAdjustments | None = None
     nonius_adjustments: mu_3sl.AnalogTrackAdjustments | None = None
     spo_base: int = 0
@@ -215,6 +227,7 @@ class Encoder:
             pos_bits=self._read_drive(r.pos_bits),
             pos_st_bits=self._read_drive(r.pos_st_bits),
             pos_start_bit=self._read_drive(r.pos_start_bit),
+            error_tolerance=self._read_drive(r.error_tolerance),
         )
 
     def set_drive_config(self, config: DriveFrameConfig) -> None:
@@ -228,6 +241,7 @@ class Encoder:
         self._write_drive(r.pos_bits, config.pos_bits)
         self._write_drive(r.pos_st_bits, config.pos_st_bits)
         self._write_drive(r.pos_start_bit, config.pos_start_bit)
+        self._write_drive(r.error_tolerance, config.error_tolerance)
         logger.info("Encoder %d: drive frame config applied.", self._number)
 
     # -- iC-MU register config --
@@ -245,6 +259,7 @@ class Encoder:
             out_lsb_st=self._read_ic(OUT_LSB_ST),
             test=self._read_ic(TEST),
             mpc=self._read_ic(MPC),
+            cfgew=self._read_ic(CFGEW),
         )
 
     def set_ic_config(self, state: ICMURegisterState) -> None:
@@ -259,9 +274,54 @@ class Encoder:
         self._write_ic(OUT_LSB_ST, state.out_lsb_st)
         self._write_ic(TEST, state.test)
         self._write_ic(MPC, state.mpc)
+        self._write_ic(CFGEW, state.cfgew)
         logger.info("Encoder %d: iC-MU config registers applied.", self._number)
 
     # -- Calibration mode --
+
+    def ensure_normal_mode(self) -> bool:
+        """Check if the encoder is in normal ABS mode and fix it if not.
+
+        A previous interrupted calibration may leave the iC-MU in RAW
+        mode with an enlarged output, causing the drive to receive
+        frames that don't match its expected frame size.
+
+        Returns:
+            True if the encoder was already in normal mode, False if a
+            fix was applied.
+        """
+        out_msb = OUT_MSB_ZERO.field("out_msb").extract(self._read_ic(OUT_MSB_ZERO))
+        mode_st = OUT_LSB_ST.field("mode_st").extract(self._read_ic(OUT_LSB_ST))
+        normal_out_msb = 0x06
+        normal_mode_st = 0x00  # ABS
+
+        if out_msb == normal_out_msb and mode_st == normal_mode_st:
+            return True
+
+        logger.warning(
+            "Encoder %d: not in normal mode (OUT_MSB=0x%02X, MODE_ST=%d); "
+            "restoring from previous interrupted calibration.",
+            self._number,
+            out_msb,
+            mode_st,
+        )
+        # Restore to absolute mode with EEPROM-default output width
+        lsb_raw = self._read_ic(OUT_LSB_ST)
+        lsb_raw = OUT_LSB_ST.field("out_lsb").insert(lsb_raw, 0)
+        lsb_raw = OUT_LSB_ST.field("mode_st").insert(lsb_raw, normal_mode_st)
+        self._write_ic(OUT_LSB_ST, lsb_raw)
+
+        msb_raw = self._read_ic(OUT_MSB_ZERO)
+        msb_raw = OUT_MSB_ZERO.field("out_msb").insert(msb_raw, normal_out_msb)
+        self._write_ic(OUT_MSB_ZERO, msb_raw)
+
+        # Disable analog calibration enable bit
+        enac_raw = self._read_ic(ENAC)
+        enac_raw = ENAC.field("enac").insert(enac_raw, 0)
+        self._write_ic(ENAC, enac_raw)
+        # Restore CFGEW to default (all error sources enabled)
+        self._write_ic(CFGEW, 0x00)
+        return False
 
     def configure_in_calibration_mode(self) -> int:
         """Configure iC-MU registers and drive frame for calibration.
@@ -307,6 +367,10 @@ class Encoder:
         if test_orig != _CALIB_TEST:
             self._write_ic(TEST, _CALIB_TEST)
 
+        # Suppress all ERR/WRN sources so the drive doesn't fault
+        # on error bits from the (still uncalibrated) encoder.
+        self._write_ic(CFGEW, _CALIB_CFGEW_SUPPRESS)
+
         # MPC: if 0x0C set to 0x0B
         mpc_val = MPC.field("mpc").extract(mpc_orig)
         if mpc_val == 0x0C:
@@ -320,6 +384,10 @@ class Encoder:
         self._write_drive(r.pos_bits, CALIB_POS_BITS)
         self._write_drive(r.pos_st_bits, CALIB_POS_ST_BITS)
         self._write_drive(r.pos_start_bit, CALIB_POS_START_BIT)
+
+        # Raise error tolerance after the frame change to prevent the
+        # drive from freezing POS_VALUE during transient CRC mismatches.
+        self._write_drive(r.error_tolerance, CALIB_ERROR_TOLERANCE)
 
         n_master_periods = 1 << mpc_val
         logger.info(
