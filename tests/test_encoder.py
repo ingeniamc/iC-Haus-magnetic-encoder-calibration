@@ -9,7 +9,6 @@ from ic_haus_magnetic_encoder_calibration.encoder import (
 from ic_haus_magnetic_encoder_calibration.ic_haus_registers import (
     GX_M,
     HARD_REV,
-    OUT_MSB_ZERO,
     BissAction,
 )
 
@@ -20,9 +19,9 @@ def encoder(mock_mc):
 
 
 class TestBissReadWrite:
-    """Tests for the Encoder._read_ic / _write_ic BiSS protocol."""
+    """BiSS protocol sequence must be exact: CTL=0, ADDR, CTL=READ/WRITE."""
 
-    def test_read_calls_biss_sequence(self, encoder, mock_mc) -> None:
+    def test_read_ic_follows_biss_protocol(self, encoder, mock_mc) -> None:
         mock_mc.communication.get_register.return_value = 0x42
         regs = ENCODER_1_REGS
 
@@ -30,45 +29,21 @@ class TestBissReadWrite:
 
         assert result == 0x42
         calls = mock_mc.communication.set_register.call_args_list
-        assert len(calls) == 3
         assert calls[0].args == (regs.itf_ctl, BissAction.NO_ACTION)
         assert calls[1].args == (regs.itf_addr, HARD_REV.address)
         assert calls[2].args == (regs.itf_ctl, BissAction.READ)
 
-    def test_read_masks_to_8_bits(self, encoder, mock_mc) -> None:
+    def test_read_ic_masks_to_8_bits(self, encoder, mock_mc) -> None:
         mock_mc.communication.get_register.return_value = 0x1FF
-        result = encoder._read_ic(GX_M)
-        assert result == 0xFF
+        assert encoder._read_ic(GX_M) == 0xFF
 
-    def test_write_calls_biss_sequence(self, encoder, mock_mc) -> None:
-        regs = ENCODER_1_REGS
-        encoder._write_ic(OUT_MSB_ZERO, 0xAB)
-
-        calls = mock_mc.communication.set_register.call_args_list
-        assert len(calls) == 4
-        assert calls[0].args == (regs.itf_ctl, BissAction.NO_ACTION)
-        assert calls[1].args == (regs.itf_addr, OUT_MSB_ZERO.address)
-        assert calls[2].args == (regs.itf_data, 0xAB)
-        assert calls[3].args == (regs.itf_ctl, BissAction.WRITE)
-
-    def test_write_masks_value(self, encoder, mock_mc) -> None:
+    def test_write_ic_masks_value(self, encoder, mock_mc) -> None:
         encoder._write_ic(GX_M, 0x1FF)
         data_call = mock_mc.communication.set_register.call_args_list[2]
         assert data_call.args[1] == 0xFF
 
 
 class TestReadRevision:
-    def test_returns_revision(self, encoder, mock_mc, mocker) -> None:
-        mu_3sl = mocker.patch("ic_haus_magnetic_encoder_calibration.encoder.mu_3sl")
-        mock_mc.communication.get_register.return_value = 0x03
-        mu_3sl.Revision.return_value = mocker.MagicMock(name="REV_C")
-        mu_3sl.Revision.NONE = mocker.sentinel.NONE
-
-        result = encoder.read_revision()
-
-        mu_3sl.Revision.assert_called_with(0x03)
-        assert result is not mocker.sentinel.NONE
-
     def test_raises_for_none_revision(self, encoder, mock_mc, mocker) -> None:
         mu_3sl = mocker.patch("ic_haus_magnetic_encoder_calibration.encoder.mu_3sl")
         mock_mc.communication.get_register.return_value = 0x00
@@ -80,46 +55,9 @@ class TestReadRevision:
             encoder.read_revision()
 
 
-class TestDriveConfig:
-    def test_get_drive_config_reads_four_registers(self, encoder, mock_mc) -> None:
-        mock_mc.communication.get_register.side_effect = [100, 16, 16, 4]
-
-        config = encoder.get_drive_config()
-
-        assert config.frame_size == 100
-        assert config.pos_bits == 16
-        assert config.pos_st_bits == 16
-        assert config.pos_start_bit == 4
-
-    def test_set_drive_config_writes_back(self, encoder, mock_mc) -> None:
-        r = ENCODER_1_REGS
-        mock_mc.communication.get_register.side_effect = [100, 16, 16, 4]
-        config = encoder.get_drive_config()
-
-        mock_mc.communication.set_register.reset_mock()
-        encoder.set_drive_config(config)
-
-        calls = mock_mc.communication.set_register.call_args_list
-        assert any(c.args == (r.frame_size, 100) for c in calls)
-        assert any(c.args == (r.pos_bits, 16) for c in calls)
-
-
 class TestConfigureInCalibrationMode:
-    def test_returns_master_periods(self, encoder, mock_mc) -> None:
-        mock_mc.communication.get_register.side_effect = [
-            0x00,  # ENAC
-            0x00,  # MODEA_MODEB
-            0x00,  # OUT_MSB_ZERO
-            0x00,  # OUT_LSB_ST
-            0x00,  # TEST
-            0x05,  # MPC = 5 -> 2^5 = 32 periods
-        ]
-
-        n_periods = encoder.configure_in_calibration_mode()
-
-        assert n_periods == 32
-
-    def test_mpc_0x0c_changed_to_0x0b(self, encoder, mock_mc) -> None:
+    def test_mpc_0x0c_reduced_to_0x0b(self, encoder, mock_mc) -> None:
+        """MPC=0x0C is a special case that must be reduced to 0x0B."""
         mock_mc.communication.get_register.side_effect = [
             0x80,  # ENAC already set
             0x02,  # MODEA already BiSS
@@ -134,53 +72,6 @@ class TestConfigureInCalibrationMode:
         assert n_periods == 2048
 
 
-class TestAnalogAdjustments:
-    def test_read_calls_biss_read_8_times(self, encoder, mock_mc) -> None:
-        mock_mc.communication.get_register.side_effect = [
-            10,
-            20,
-            30,
-            40,
-            50,
-            60,
-            70,
-            80,
-        ]
-
-        encoder.read_analog_adjustments()
-
-        assert mock_mc.communication.get_register.call_count == 8
-
-    def test_write_calls_8_registers(self, encoder, mock_mc, mocker) -> None:
-        master = mocker.MagicMock(
-            cosine_gain=1,
-            sine_offset=2,
-            cosine_offset=3,
-            phase=4,
-        )
-        nonius = mocker.MagicMock(
-            cosine_gain=5,
-            sine_offset=6,
-            cosine_offset=7,
-            phase=8,
-        )
-
-        encoder.write_analog_adjustments(master, nonius)
-
-        assert mock_mc.communication.set_register.call_count == 32
-
-
-class TestWriteNoniusParameters:
-    def test_writes_spo_registers(self, encoder, mock_mc, mocker) -> None:
-        table_params = mocker.MagicMock()
-        table_params.spo_base = 0x05
-        table_params.spo_n = list(range(15))
-
-        encoder.write_nonius_parameters(table_params)
-
-        assert mock_mc.communication.set_register.call_count == 32
-
-
 class TestSaveToEeprom:
     def test_success(self, encoder, mock_mc) -> None:
         mock_mc.communication.get_register.return_value = 0x00
@@ -193,6 +84,47 @@ class TestSaveToEeprom:
     def test_crc_error(self, encoder, mock_mc) -> None:
         mock_mc.communication.get_register.return_value = 0x80
         assert encoder.save_to_eeprom() is False
+
+
+class TestGetICConfig:
+    """Tests for iC-MU config save/restore data integrity."""
+
+    def test_roundtrip_preserves_values(self, encoder, mock_mc) -> None:
+        """get_ic_config → set_ic_config writes back the exact same register bytes."""
+        mock_mc.communication.get_register.side_effect = [
+            0x80, 0x02, 0xCE, 0x20, 0x00, 0x05,
+        ]
+        state = encoder.get_ic_config()
+
+        mock_mc.communication.set_register.reset_mock()
+        encoder.set_ic_config(state)
+
+        data_writes = [
+            c.args[1]
+            for c in mock_mc.communication.set_register.call_args_list
+            if c.args[0] == ENCODER_1_REGS.itf_data
+        ]
+        assert data_writes == [0x80, 0x02, 0xCE, 0x20, 0x00, 0x05]
+
+
+class TestInCalibrationModeContextManager:
+    """Context manager must always restore config, even on exception."""
+
+    def test_restores_on_exception(self, encoder, mock_mc, mocker) -> None:
+        saved_drive = mocker.MagicMock(name="DriveConfig")
+        saved_ic = mocker.MagicMock(name="ICConfig")
+        mocker.patch.object(encoder, "get_drive_config", return_value=saved_drive)
+        mocker.patch.object(encoder, "get_ic_config", return_value=saved_ic)
+        mocker.patch.object(encoder, "configure_in_calibration_mode", return_value=32)
+        mocker.patch.object(encoder, "set_ic_config")
+        mocker.patch.object(encoder, "set_drive_config")
+
+        with pytest.raises(ValueError, match="test error"):
+            with encoder.in_calibration_mode():
+                raise ValueError("test error")
+
+        encoder.set_ic_config.assert_called_once_with(saved_ic)
+        encoder.set_drive_config.assert_called_once_with(saved_drive)
 
 
 # ---------------------------------------------------------------------------

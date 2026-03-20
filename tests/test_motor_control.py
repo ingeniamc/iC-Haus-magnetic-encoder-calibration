@@ -1,7 +1,6 @@
 import pytest
-
+import time
 from ic_haus_magnetic_encoder_calibration.motor_control import MotorControl
-
 
 @pytest.fixture
 def motor(mock_mc):
@@ -25,31 +24,16 @@ class TestHasFsoe:
 
 
 class TestStartMotor:
-    def test_velocity_mode_enables_and_sets_velocity(self, motor, mock_mc) -> None:
+    def test_enables_motor_and_starts_generator(self, motor, mock_mc) -> None:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = False
-        mock_mc.motion.get_operation_mode.return_value = 19
-
-        motor.start_motor(velocity=2.0)
-
-        mock_mc.motion.motor_enable.assert_called_once_with(axis=1)
-        mock_mc.motion.set_velocity.assert_called_once_with(2.0, axis=1)
-
-    def test_voltage_mode_ramps_frequency(self, motor, mock_mc) -> None:
-        mock_mc.servos = {"default": mock_mc}
-        mock_mc.dictionary.is_safe = False
-        mock_mc.motion.get_operation_mode.return_value = 0
 
         motor.start_motor()
 
         mock_mc.motion.motor_enable.assert_called_once_with(axis=1)
-        assert mock_mc.communication.set_register.call_count >= 1
-        freq_calls = [
-            c
-            for c in mock_mc.communication.set_register.call_args_list
-            if c.args[0] == "FBK_GEN_FREQ"
-        ]
-        assert len(freq_calls) == 8  # 0.5 to 4.0 in 0.5 steps
+        mock_mc.motion.internal_generator_saw_tooth_move.assert_called_once()
+        # Current ramp: 10 steps of set_current_quadrature
+        assert mock_mc.motion.set_current_quadrature.call_count == 10
 
 
 class TestStartFsoe:
@@ -77,6 +61,9 @@ class TestStartFsoe:
         handler.write_safe_parameters.assert_called_once()
         mock_mc.fsoe.start_master.assert_called_once_with(start_pdos=True)
         mock_mc.fsoe.wait_for_state_data.assert_called_once_with(timeout=15)
+        handler.sto_deactivate.assert_called_once()
+        handler.ss1_deactivate.assert_called_once()
+        handler.is_sto_active.assert_called_once()
         assert motor.fsoe_active is True
 
 
@@ -104,7 +91,6 @@ class TestAutoFsoeOnStartMotor:
     def test_starts_fsoe_automatically(self, motor, mock_mc, mocker) -> None:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = True
-        mock_mc.motion.get_operation_mode.return_value = 19
         mocker.patch.dict(
             "sys.modules",
             {"ingeniamotion.fsoe_master": mocker.MagicMock()},
@@ -118,7 +104,6 @@ class TestAutoFsoeOnStartMotor:
     def test_skips_fsoe_when_dict_not_safe(self, motor, mock_mc) -> None:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = False
-        mock_mc.motion.get_operation_mode.return_value = 19
 
         motor.start_motor()
 
@@ -130,18 +115,15 @@ class TestRunningContextManager:
     def test_starts_and_stops_motor(self, motor, mock_mc) -> None:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = False
-        mock_mc.motion.get_operation_mode.return_value = 19
 
-        with motor.running(velocity=1.5):
+        with motor.running():
             mock_mc.motion.motor_enable.assert_called_once()
 
-        mock_mc.motion.set_velocity.assert_any_call(0, axis=1)
         mock_mc.motion.motor_disable.assert_called_once()
 
     def test_stops_on_exception(self, motor, mock_mc) -> None:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = False
-        mock_mc.motion.get_operation_mode.return_value = 19
 
         with pytest.raises(ValueError, match="test error"):
             with motor.running():
@@ -183,12 +165,8 @@ class TestInternalGeneratorHardware:
     def test_start_and_stop_with_generator(self, hw_motor) -> None:
         hw_motor.configure_internal_generator()
         with hw_motor.running():
-            pass  # motor spins briefly then stops
+            time.sleep(5)  # Let the motor spin
+            
 
 
-@pytest.mark.hardware
-class TestVelocityModeHardware:
-    def test_start_and_stop_with_velocity(self, hw_motor) -> None:
-        hw_motor.configure_velocity_mode(4)
-        with hw_motor.running(velocity=1.0):
-            pass  # motor spins briefly then stops
+

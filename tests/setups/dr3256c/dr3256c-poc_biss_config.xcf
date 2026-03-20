@@ -265,7 +265,6 @@
 				<Register access="rw" dtype="float" id="COMMS_SYNC_PLL_PHASE" subnode="1" storage="0.25"/>
 				<Register access="rw" dtype="float" id="COMMS_SYNC_PLL_KP" subnode="1" storage="0.01"/>
 				<Register access="rw" dtype="u32" id="MOT_BRAKE_FREQ" subnode="1" storage="10000"/>
-				<Register access="rw" dtype="u16" id="IMU_WAIT_CYCLES" subnode="1" storage="4"/>
 			</Registers>
 		</Device>
 	</Body>
