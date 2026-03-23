@@ -34,6 +34,11 @@ pipeline {
                 }
             }
             stages {
+                stage('Clean workspace') {
+                    steps {
+                        bat "git clean -fdx"
+                    }
+                }
                 stage('Move workspace') {
                     steps {
                         bat "XCOPY ${env.WORKSPACE} ${WIN_DOCKER_TMP_PATH} /s /i /y /e /h"
@@ -88,6 +93,11 @@ pipeline {
                 }
             }
             stages {
+                stage('Clean workspace') {
+                    steps {
+                        sh 'git clean -fdx'
+                    }
+                }
                 stage('Unstash build') {
                     steps {
                         unstash 'build'
