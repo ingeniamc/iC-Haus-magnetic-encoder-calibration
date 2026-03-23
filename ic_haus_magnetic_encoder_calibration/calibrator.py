@@ -114,15 +114,6 @@ class EncoderCalibrator:
         """Configure the drive for internal generator mode."""
         self._motor.configure_internal_generator()
 
-    def start_motor(self) -> None:
-        """Start the motor via MotorControl (handles FSoE automatically)."""
-        self._motor.start_motor()
-
-    def stop_motor(self) -> None:
-        """Stop the motor and FSoE via MotorControl."""
-        self._motor.stop_motor()
-        self._motor.stop_fsoe()
-
     # -- Data acquisition --
 
     def acquire_raw_data(
@@ -148,7 +139,8 @@ class EncoderCalibrator:
             for idx, enc in enumerate(self._encoders):
                 val = int(
                     self._mc.communication.get_register(
-                        enc.regs.pos_value, axis=self._axis,
+                        enc.regs.pos_value,
+                        axis=self._axis,
                     )
                 )
                 channels[idx].append(val)
@@ -218,11 +210,8 @@ class EncoderCalibrator:
 
                 logger.info("--- Iteration %d ---", iteration)
 
-                self.start_motor()
-                try:
+                with self._motor.running():
                     raw_data = self.acquire_raw_data()
-                finally:
-                    self.stop_motor()
 
                 for enc in pending:
                     master_raw, nonius_raw = raw_data[enc.number]
@@ -248,11 +237,16 @@ class EncoderCalibrator:
                         "Encoder %d iter %d residuals: "
                         "M(gx=%.2f, voss=%.2f, vosc=%.2f, ph=%.2f) "
                         "N(gx=%.2f, voss=%.2f, vosc=%.2f, ph=%.2f)",
-                        enc.number, iteration,
-                        m_rel.cosine_gain_lsb, m_rel.sine_offset_lsb,
-                        m_rel.cosine_offset_lsb, m_rel.phase_lsb,
-                        n_rel.cosine_gain_lsb, n_rel.sine_offset_lsb,
-                        n_rel.cosine_offset_lsb, n_rel.phase_lsb,
+                        enc.number,
+                        iteration,
+                        m_rel.cosine_gain_lsb,
+                        m_rel.sine_offset_lsb,
+                        m_rel.cosine_offset_lsb,
+                        m_rel.phase_lsb,
+                        n_rel.cosine_gain_lsb,
+                        n_rel.sine_offset_lsb,
+                        n_rel.cosine_offset_lsb,
+                        n_rel.phase_lsb,
                     )
 
                     if _is_converged(analyze_result):
@@ -323,11 +317,8 @@ class EncoderCalibrator:
         # to get the best nonius table.
         # (In the architecture, the last iteration's analyze_result is reused.)
         # We need the last analyze_result — re-run analyze to get SPO table.
-        self.start_motor()
-        try:
+        with self._motor.running():
             raw_data = self.acquire_raw_data()
-        finally:
-            self.stop_motor()
 
         master_raw, nonius_raw = raw_data[enc.number]
         master_adj, nonius_adj = enc.read_analog_adjustments()

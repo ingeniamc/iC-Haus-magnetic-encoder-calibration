@@ -56,7 +56,10 @@ def parse_args() -> argparse.Namespace:
         "--gen-current",
         type=float,
         default=DEFAULT_GEN_CURRENT,
-        help=f"Quadrature current for the internal generator in amps (default: {DEFAULT_GEN_CURRENT})",
+        help=(
+            "Quadrature current for the internal generator in amps"
+            f" (default: {DEFAULT_GEN_CURRENT})"
+        ),
     )
     parser.add_argument(
         "--gen-frequency",

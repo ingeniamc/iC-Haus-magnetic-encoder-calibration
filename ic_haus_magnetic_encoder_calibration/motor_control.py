@@ -22,12 +22,12 @@ logger = logging.getLogger(__name__)
 
 # Internal generator defaults
 DEFAULT_GEN_FREQ = 0.4  # Hz – saw-tooth frequency for internal generator
-DEFAULT_GEN_CURRENT = 8.0  # Amps – 80% of MOT_RATED_CURRENT (10 A)
+DEFAULT_GEN_CURRENT = 1.0  # Amps
+
+
 _GEN_CYCLES = 100  # number of generator cycles
 _RAMP_STEPS = 10  # number of current ramp steps
 _RAMP_INTERVAL = 0.2  # seconds between ramp steps
-
-# PDO watchdog timeout: raised above the default 100 ms to avoid FSoE PDO
 _PDO_WATCHDOG_TIMEOUT = 0.3  # seconds
 
 
@@ -70,14 +70,9 @@ class MotorControl:
         except (KeyError, AttributeError):
             return False
 
-    @property
-    def fsoe_active(self) -> bool:
-        """True if the FSoE master is currently running."""
-        return self._fsoe_active
-
     # -- FSoE lifecycle --
 
-    def start_fsoe(self) -> None:
+    def _start_fsoe(self) -> None:
         """Start the FSoE master in STO bypass mode and enable STO.
 
         Resets all safety parameters to dictionary defaults, configures PDO
@@ -93,14 +88,17 @@ class MotorControl:
         handler = self._mc.fsoe.create_fsoe_master_handler(use_sra=True)
 
         sto_func = handler.sto_function()
-        ss1_func = handler.ss1_function()
+        sout_func = handler.sout_function()
 
-        # Build minimal process image: STO command only
+        # Build process image: STO + SOut commands
         if handler.process_image.editable:
             handler.process_image.inputs.clear()
             handler.process_image.outputs.clear()
             handler.process_image.inputs.add(sto_func.command)
             handler.process_image.outputs.add(sto_func.command)
+            if sout_func is not None:
+                handler.process_image.inputs.add(sout_func.command)
+                handler.process_image.outputs.add(sout_func.command)
 
         # Reset all safety parameters to dictionary defaults
         for uid, param in handler.safety_parameters.items():
@@ -110,11 +108,11 @@ class MotorControl:
             if default is not None:
                 param.set_without_updating(default)
 
-        # Deactivate STO and SS1 commands (initial values before start)
+        # Deactivate STO, and SOut commands (initial values before start)
         sto_func.command.set(True)
-        ss1_func.command.set(True)
-        if handler.sout_function() is not None:
-            handler.sout_disable()
+        if sout_func is not None:
+            sout_func.command.set(True)
+            sout_func.sout_disable.set(0)
 
         # Configure PDO maps and write safety params to slave
         handler.configure_pdo_maps()
@@ -126,9 +124,8 @@ class MotorControl:
         self._mc.capture.pdo.start_pdos(watchdog_timeout=_PDO_WATCHDOG_TIMEOUT)
         self._mc.fsoe.wait_for_state_data(timeout=15)
 
-        # Exit failsafe mode and deactivate STO/SS1 after DATA state
+        # Exit failsafe mode and deactivate STO after DATA state
         handler.sto_deactivate()
-        handler.ss1_deactivate()
         time.sleep(2)
 
         logger.info(
@@ -141,7 +138,7 @@ class MotorControl:
         self._fsoe_active = True
         logger.info("FSoE master running, STO bypass active.")
 
-    def stop_fsoe(self) -> None:
+    def _stop_fsoe(self) -> None:
         """Stop the FSoE master if it is running."""
         if not self._fsoe_active:
             return
@@ -155,7 +152,7 @@ class MotorControl:
         self._fsoe_active = False
 
     @contextmanager
-    def fsoe_session(self) -> Generator[None, None, None]:
+    def _fsoe_session(self) -> Generator[None, None, None]:
         """Context manager that starts FSoE and stops it on exit.
 
         Raises:
@@ -164,11 +161,11 @@ class MotorControl:
         Yields:
             None — FSoE master is running with STO enabled.
         """
-        self.start_fsoe()
+        self._start_fsoe()
         try:
             yield
         finally:
-            self.stop_fsoe()
+            self._stop_fsoe()
 
     # -- Motor control --
 
@@ -184,22 +181,14 @@ class MotorControl:
         calibrator) to match whatever the encoder currently outputs so that
         CRC checks pass.
         """
-        self._mc.configuration.set_commutation_feedback(
-            SensorType.INTGEN, axis=self._axis
-        )
-        self._mc.configuration.set_velocity_feedback(
-            SensorType.INTGEN, axis=self._axis
-        )
-        self._mc.configuration.set_position_feedback(
-            SensorType.INTGEN, axis=self._axis
-        )
-        self._mc.configuration.set_auxiliar_feedback(
-            SensorType.ABS1, axis=self._axis
-        )
+        self._mc.configuration.set_commutation_feedback(SensorType.INTGEN, axis=self._axis)
+        self._mc.configuration.set_velocity_feedback(SensorType.INTGEN, axis=self._axis)
+        self._mc.configuration.set_position_feedback(SensorType.INTGEN, axis=self._axis)
+        self._mc.configuration.set_auxiliar_feedback(SensorType.ABS1, axis=self._axis)
         self._mc.motion.set_operation_mode(OperationMode.CURRENT, axis=self._axis)
         logger.info("Internal generator mode configured (current mode).")
 
-    def start_motor(self) -> None:
+    def _start_motor(self) -> None:
         """Enable the motor and spin using the internal signal generator.
 
         If FSoE is available but not started, it will be started automatically.
@@ -209,7 +198,7 @@ class MotorControl:
         discrete steps with sleeps to avoid starving FSoE PDO exchanges.
         """
         if self.has_fsoe and not self._fsoe_active:
-            self.start_fsoe()
+            self._start_fsoe()
 
         self._mc.motion.fault_reset(axis=self._axis)
 
@@ -221,36 +210,40 @@ class MotorControl:
         step = self._gen_current / _RAMP_STEPS
         for i in range(1, _RAMP_STEPS + 1):
             self._mc.motion.set_current_quadrature(
-                step * i, axis=self._axis,
+                step * i,
+                axis=self._axis,
             )
             time.sleep(_RAMP_INTERVAL)
 
         # Step 2: Start the saw-tooth generator *after* the rotor is locked.
         # The field now advances smoothly from the locked position.
         self._mc.motion.internal_generator_saw_tooth_move(
-            1, _GEN_CYCLES, self._gen_frequency, axis=self._axis,
+            1,
+            _GEN_CYCLES,
+            self._gen_frequency,
+            axis=self._axis,
         )
 
         logger.info("Motor started.")
 
-    def stop_motor(self) -> None:
-        """Stop the motor and disable it."""
+    def _stop_motor(self) -> None:
+        """Stop the motor, disable it, and stop FSoE if running."""
         self._mc.motion.motor_disable(axis=self._axis)
+        self._stop_fsoe()
         logger.info("Motor stopped.")
 
     @contextmanager
     def running(self) -> Generator[None, None, None]:
         """Context manager that starts the motor and stops it on exit.
 
-        Also handles FSoE lifecycle: starts before motor enable, stops after
-        motor disable.
+        Handles FSoE lifecycle automatically: starts before motor enable,
+        stops after motor disable.
 
         Yields:
             None — motor is running.
         """
-        self.start_motor()
+        self._start_motor()
         try:
             yield
         finally:
-            self.stop_motor()
-            self.stop_fsoe()
+            self._stop_motor()

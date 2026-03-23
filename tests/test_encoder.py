@@ -92,7 +92,13 @@ class TestGetICConfig:
     def test_roundtrip_preserves_values(self, encoder, mock_mc) -> None:
         """get_ic_config → set_ic_config writes back the exact same register bytes."""
         mock_mc.communication.get_register.side_effect = [
-            0x80, 0x02, 0xCE, 0x20, 0x00, 0x05, 0x00,
+            0x80,
+            0x02,
+            0xCE,
+            0x20,
+            0x00,
+            0x05,
+            0x00,
         ]
         state = encoder.get_ic_config()
 

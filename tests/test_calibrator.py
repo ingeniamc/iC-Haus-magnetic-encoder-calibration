@@ -163,11 +163,11 @@ def _setup_converging_calibration(cal, mocker, mu_mock, analyze_results):
     cal_obj.analyze_raw_data.side_effect = list(analyze_results)
 
     mu_mock.nonius_track_offset_table_parameters.return_value = mocker.MagicMock(
-        spo_base=0, spo_n=list(range(15)),
+        spo_base=0,
+        spo_n=list(range(15)),
     )
     mocker.patch.object(cal, "acquire_raw_data", return_value={1: ([1], [2])})
-    mocker.patch.object(cal, "start_motor")
-    mocker.patch.object(cal, "stop_motor")
+    mocker.patch.object(cal._motor, "running")
     return cal_obj
 
 
@@ -214,7 +214,10 @@ class TestCalibrateConvergence:
         conv = _make_converged_analyze_result(mocker)
         conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
         cal_obj = _setup_converging_calibration(
-            cal, mocker, mu_3sl_mock, [not_conv, conv, conv],
+            cal,
+            mocker,
+            mu_3sl_mock,
+            [not_conv, conv, conv],
         )
 
         results = cal.calibrate()
@@ -232,7 +235,10 @@ class TestCalibrateConvergence:
 
         not_conv = _make_not_converged_analyze_result(mocker)
         _setup_converging_calibration(
-            cal, mocker, mu_3sl_mock, [not_conv, not_conv, not_conv],
+            cal,
+            mocker,
+            mu_3sl_mock,
+            [not_conv, not_conv, not_conv],
         )
 
         results = cal.calibrate()
@@ -252,13 +258,17 @@ class TestCalibrateConvergence:
         conv = _make_converged_analyze_result(mocker)
         conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
         cal_obj = _setup_converging_calibration(
-            cal, mocker, mu_3sl_mock, [conv, conv],
+            cal,
+            mocker,
+            mu_3sl_mock,
+            [conv, conv],
         )
 
         cal.calibrate()
 
         cal_obj.set_current_analog_track_adjustments.assert_called_with(
-            master_adj, nonius_adj,
+            master_adj,
+            nonius_adj,
         )
 
 
@@ -274,8 +284,7 @@ class TestCalibratePartialConvergence:
         _patch_encoder(enc1, mocker)
         _patch_encoder(enc2, mocker)
 
-        mocker.patch.object(cal, "start_motor")
-        mocker.patch.object(cal, "stop_motor")
+        mocker.patch.object(cal._motor, "running")
 
         cal_obj1 = mocker.MagicMock(name="Cal1")
         cal_obj2 = mocker.MagicMock(name="Cal2")
@@ -288,10 +297,13 @@ class TestCalibratePartialConvergence:
         cal_obj1.analyze_raw_data.side_effect = [conv, conv]
         cal_obj2.analyze_raw_data.return_value = not_conv
         mu_mock.nonius_track_offset_table_parameters.return_value = mocker.MagicMock(
-            spo_base=0, spo_n=list(range(15)),
+            spo_base=0,
+            spo_n=list(range(15)),
         )
         mocker.patch.object(
-            cal, "acquire_raw_data", return_value={1: ([1], [2]), 2: ([3], [4])},
+            cal,
+            "acquire_raw_data",
+            return_value={1: ([1], [2]), 2: ([3], [4])},
         )
 
         results = cal.calibrate()
@@ -333,10 +345,11 @@ class TestCalibrateRestore:
         enc.get_ic_config.return_value = saved_ic
 
         mu_3sl_mock.Calibration.return_value = mocker.MagicMock()
-        mocker.patch.object(cal, "start_motor")
-        mocker.patch.object(cal, "stop_motor")
+        mocker.patch.object(cal._motor, "running")
         mocker.patch.object(
-            cal, "acquire_raw_data", side_effect=RuntimeError("connection lost"),
+            cal,
+            "acquire_raw_data",
+            side_effect=RuntimeError("connection lost"),
         )
 
         with pytest.raises(RuntimeError, match="connection lost"):

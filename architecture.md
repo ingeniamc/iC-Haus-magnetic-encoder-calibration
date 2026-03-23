@@ -316,13 +316,7 @@ classDiagram
         -_gen_frequency: float
         -_gen_current: float
         +has_fsoe: bool
-        +fsoe_active: bool
-        +start_fsoe()
-        +stop_fsoe()
-        +fsoe_session() ContextManager
         +configure_internal_generator()
-        +start_motor()
-        +stop_motor()
         +running() ContextManager
     }
 

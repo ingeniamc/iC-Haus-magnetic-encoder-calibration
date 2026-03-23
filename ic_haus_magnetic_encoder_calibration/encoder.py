@@ -177,7 +177,10 @@ class Encoder:
         time.sleep(_BISS_SETTLE_S)
         raw = int(self._mc.communication.get_register(regs.itf_data, axis=ax)) & 0xFF
         logger.debug(
-            "Encoder %d: _read_ic(0x%02X) → 0x%02X", self._number, reg.address, raw,
+            "Encoder %d: _read_ic(0x%02X) → 0x%02X",
+            self._number,
+            reg.address,
+            raw,
         )
         return raw
 
@@ -204,7 +207,10 @@ class Encoder:
         """
         raw = self._read_ic(HARD_REV)
         logger.debug(
-            "Encoder %d: HARD_REV(0x%02X) raw=0x%02X", self._number, HARD_REV.address, raw,
+            "Encoder %d: HARD_REV(0x%02X) raw=0x%02X",
+            self._number,
+            HARD_REV.address,
+            raw,
         )
         revision = mu_3sl.Revision(raw)
         if revision is mu_3sl.Revision.NONE:

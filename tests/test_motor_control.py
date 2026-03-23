@@ -33,7 +33,7 @@ class TestStartMotor:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = False
 
-        motor.start_motor()
+        motor._start_motor()
 
         mock_mc.motion.motor_enable.assert_called_once_with(axis=1)
         mock_mc.motion.internal_generator_saw_tooth_move.assert_called_once()
@@ -45,14 +45,14 @@ class TestStartMotor:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = False
         call_log: list[str] = []
-        mock_mc.motion.set_current_quadrature.side_effect = (
-            lambda *_a, **_k: call_log.append("current")
+        mock_mc.motion.set_current_quadrature.side_effect = lambda *_a, **_k: call_log.append(
+            "current"
         )
-        mock_mc.motion.internal_generator_saw_tooth_move.side_effect = (
-            lambda *_a, **_k: call_log.append("saw_tooth")
+        mock_mc.motion.internal_generator_saw_tooth_move.side_effect = lambda *_a, **_k: (
+            call_log.append("saw_tooth")
         )
 
-        motor.start_motor()
+        motor._start_motor()
 
         saw_idx = call_log.index("saw_tooth")
         assert call_log.count("current") == 10
@@ -65,17 +65,13 @@ class TestStartFsoe:
         mock_mc.dictionary.is_safe = False
 
         with pytest.raises(RuntimeError, match="FSoE is not available"):
-            motor.start_fsoe()
+            motor._start_fsoe()
 
-    def test_fsoe_active_after_start(self, motor, mock_mc, mocker) -> None:
+    def test_configures_fsoe_master(self, motor, mock_mc) -> None:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = True
-        mocker.patch.dict(
-            "sys.modules",
-            {"ingeniamotion.fsoe_master": mocker.MagicMock()},
-        )
 
-        motor.start_fsoe()
+        motor._start_fsoe()
 
         handler = mock_mc.fsoe.create_fsoe_master_handler.return_value
         mock_mc.fsoe.create_fsoe_master_handler.assert_called_once_with(use_sra=True)
@@ -86,53 +82,53 @@ class TestStartFsoe:
         mock_mc.capture.pdo.start_pdos.assert_called_once()
         mock_mc.fsoe.wait_for_state_data.assert_called_once_with(timeout=15)
         handler.sto_deactivate.assert_called_once()
-        handler.ss1_deactivate.assert_called_once()
         handler.is_sto_active.assert_called_once()
-        assert motor.fsoe_active is True
+
+    def test_sout_enabled_for_brake_release(self, motor, mock_mc) -> None:
+        """SOut is enabled so the safety master controls brake release."""
+        mock_mc.servos = {"default": mock_mc}
+        mock_mc.dictionary.is_safe = True
+
+        motor._start_fsoe()
+
+        handler = mock_mc.fsoe.create_fsoe_master_handler.return_value
+        sout_func = handler.sout_function.return_value
+        handler.sout_function.assert_called()
+        sout_func.command.set.assert_called_with(True)
+        sout_func.sout_disable.set.assert_called_with(0)
 
 
 class TestStopFsoe:
     def test_noop_when_not_active(self, motor, mock_mc) -> None:
-        motor.stop_fsoe()
+        motor._stop_fsoe()
         mock_mc.fsoe.stop_master.assert_not_called()
 
-    def test_stops_when_active(self, motor, mock_mc, mocker) -> None:
+    def test_stops_when_active(self, motor, mock_mc) -> None:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = True
-        mocker.patch.dict(
-            "sys.modules",
-            {"ingeniamotion.fsoe_master": mocker.MagicMock()},
-        )
-        motor.start_fsoe()
+        motor._start_fsoe()
 
-        motor.stop_fsoe()
+        motor._stop_fsoe()
 
         mock_mc.fsoe.stop_master.assert_called_once_with(stop_pdos=True)
-        assert motor.fsoe_active is False
 
 
 class TestAutoFsoeOnStartMotor:
-    def test_starts_fsoe_automatically(self, motor, mock_mc, mocker) -> None:
+    def test_starts_fsoe_automatically(self, motor, mock_mc) -> None:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = True
-        mocker.patch.dict(
-            "sys.modules",
-            {"ingeniamotion.fsoe_master": mocker.MagicMock()},
-        )
 
-        motor.start_motor()
+        motor._start_motor()
 
         mock_mc.fsoe.create_fsoe_master_handler.assert_called_once()
-        assert motor.fsoe_active is True
 
     def test_skips_fsoe_when_dict_not_safe(self, motor, mock_mc) -> None:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = False
 
-        motor.start_motor()
+        motor._start_motor()
 
         mock_mc.fsoe.create_fsoe_master_handler.assert_not_called()
-        assert motor.fsoe_active is False
 
 
 class TestRunningContextManager:
@@ -199,9 +195,9 @@ class TestFsoeLifecycleHardware:
     def test_start_and_stop_fsoe(self, hw_motor) -> None:
         if not hw_motor.has_fsoe:
             pytest.skip("Drive does not have FSoE")
-        with hw_motor.fsoe_session():
-            assert hw_motor.fsoe_active is True
-        assert hw_motor.fsoe_active is False
+        with hw_motor._fsoe_session():
+            assert hw_motor._fsoe_active is True
+        assert hw_motor._fsoe_active is False
 
 
 @pytest.mark.hardware
