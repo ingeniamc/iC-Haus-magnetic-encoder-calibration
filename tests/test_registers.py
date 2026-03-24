@@ -11,7 +11,7 @@ from ic_haus_magnetic_encoder_calibration.ic_haus_registers import (
 
 
 class TestICHausRegisterField:
-    """Bit manipulation is the core of register access — must be correct."""
+    """Bit manipulation is the core of register access -- must be correct."""
 
     def test_extract_isolates_field(self) -> None:
         f = ICHausRegisterField(mask=0x80, shift=7)

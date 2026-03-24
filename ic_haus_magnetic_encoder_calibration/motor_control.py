@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Internal generator defaults
-DEFAULT_GEN_FREQ = 0.4  # Hz – saw-tooth frequency for internal generator
+DEFAULT_GEN_FREQ = 0.4  # Hz - saw-tooth frequency for internal generator
 DEFAULT_GEN_CURRENT = 1.0  # Amps
 
 
@@ -159,7 +159,7 @@ class MotorControl:
             RuntimeError: If FSoE is not available.
 
         Yields:
-            None — FSoE master is running with STO enabled.
+            None -- FSoE master is running with STO enabled.
         """
         self._start_fsoe()
         try:
@@ -240,7 +240,7 @@ class MotorControl:
         stops after motor disable.
 
         Yields:
-            None — motor is running.
+            None -- motor is running.
         """
         self._start_motor()
         try:

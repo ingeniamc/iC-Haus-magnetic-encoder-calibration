@@ -8,14 +8,23 @@ then proceeds independently.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import mu_3sl_interface as mu_3sl
+from ingenialink.exceptions import ILIOError
 
 from .encoder import CalibrationResult, DriveFrameConfig, Encoder, ICMURegisterState
 from .motor_control import DEFAULT_GEN_CURRENT, DEFAULT_GEN_FREQ, MotorControl
+from .plotting import (
+    _extract_residuals,
+    plot_raw_waveforms,
+    plot_residuals_bar,
+    plot_residuals_trend,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -78,6 +87,8 @@ class EncoderCalibrator:
         max_iterations: int = 3,
         gen_frequency: float = DEFAULT_GEN_FREQ,
         gen_current: float = DEFAULT_GEN_CURRENT,
+        output_dir: Path | None = None,
+        interactive_plots: bool = False,
     ) -> None:
         self._mc = mc
         self._axis = axis
@@ -86,6 +97,8 @@ class EncoderCalibrator:
             mc, axis=axis, gen_frequency=gen_frequency, gen_current=gen_current
         )
         self._encoders: list[Encoder] = []
+        self._output_dir = output_dir or Path("calibration_output")
+        self._interactive_plots = interactive_plots
 
     # -- Encoder management --
 
@@ -137,12 +150,16 @@ class EncoderCalibrator:
         deadline = time.monotonic() + duration_s
         while time.monotonic() < deadline:
             for idx, enc in enumerate(self._encoders):
-                val = int(
-                    self._mc.communication.get_register(
-                        enc.regs.pos_value,
-                        axis=self._axis,
+                try:
+                    val = int(
+                        self._mc.communication.get_register(
+                            enc.regs.pos_value,
+                            axis=self._axis,
+                        )
                     )
-                )
+                except ILIOError:
+                    logger.debug("Skipped sample for encoder %d (SDO read error).", enc.number)
+                    continue
                 channels[idx].append(val)
             time.sleep(sampling_time_s)
 
@@ -202,6 +219,13 @@ class EncoderCalibrator:
             # -- Iterative analog calibration --
             converged: set[int] = set()
             iteration_count: dict[int, int] = {e.number: 0 for e in self._encoders}
+            residual_history: dict[int, list[list[float]]] = {
+                e.number: [] for e in self._encoders
+            }
+            iteration_log: dict[int, list[dict]] = {
+                e.number: [] for e in self._encoders
+            }
+            self._output_dir.mkdir(parents=True, exist_ok=True)
 
             for iteration in range(1, self._max_iterations + 1):
                 pending = [e for e in self._encoders if e.number not in converged]
@@ -249,6 +273,67 @@ class EncoderCalibrator:
                         n_rel.phase_lsb,
                     )
 
+                    # -- Diagnostic data collection --
+                    residuals = _extract_residuals(analyze_result)
+                    residual_history[enc.number].append(residuals)
+                    iteration_log[enc.number].append({
+                        "iteration": iteration,
+                        "master_raw": master_raw,
+                        "nonius_raw": nonius_raw,
+                        "analog_adjustments": {
+                            "master": {
+                                "cosine_gain": int(master_adj.cosine_gain),
+                                "sine_offset": int(master_adj.sine_offset),
+                                "cosine_offset": int(master_adj.cosine_offset),
+                                "phase": int(master_adj.phase),
+                            },
+                            "nonius": {
+                                "cosine_gain": int(nonius_adj.cosine_gain),
+                                "sine_offset": int(nonius_adj.sine_offset),
+                                "cosine_offset": int(nonius_adj.cosine_offset),
+                                "phase": int(nonius_adj.phase),
+                            },
+                        },
+                        "residuals": {
+                            "master": {
+                                "cosine_gain_lsb": float(m_rel.cosine_gain_lsb),
+                                "sine_offset_lsb": float(m_rel.sine_offset_lsb),
+                                "cosine_offset_lsb": float(m_rel.cosine_offset_lsb),
+                                "phase_lsb": float(m_rel.phase_lsb),
+                            },
+                            "nonius": {
+                                "cosine_gain_lsb": float(n_rel.cosine_gain_lsb),
+                                "sine_offset_lsb": float(n_rel.sine_offset_lsb),
+                                "cosine_offset_lsb": float(n_rel.cosine_offset_lsb),
+                                "phase_lsb": float(n_rel.phase_lsb),
+                            },
+                        },
+                        "converged": _is_converged(analyze_result),
+                    })
+
+                    # -- Diagnostic plots --
+                    plot_raw_waveforms(
+                        master_raw,
+                        nonius_raw,
+                        encoder=enc.number,
+                        iteration=iteration,
+                        output_dir=self._output_dir,
+                        interactive=self._interactive_plots,
+                    )
+                    plot_residuals_bar(
+                        analyze_result,
+                        encoder=enc.number,
+                        iteration=iteration,
+                        output_dir=self._output_dir,
+                        interactive=self._interactive_plots,
+                    )
+                    plot_residuals_trend(
+                        residual_history,
+                        encoder=enc.number,
+                        output_dir=self._output_dir,
+                        interactive=self._interactive_plots,
+                    )
+
                     if _is_converged(analyze_result):
                         converged.add(enc.number)
                         logger.info("Encoder %d: converged at iteration %d.", enc.number, iteration)
@@ -258,6 +343,16 @@ class EncoderCalibrator:
                         new_nonius = cal.analog_nonius_track_adjustments()
                         enc.write_analog_adjustments(new_master, new_nonius)
                         logger.info("Encoder %d: analog params adjusted.", enc.number)
+
+            # -- Export iteration data as JSON --
+            for enc_num, log_entries in iteration_log.items():
+                if log_entries:
+                    json_path = self._output_dir / f"enc{enc_num}_calibration_data.json"
+                    json_path.write_text(
+                        json.dumps(log_entries, indent=2),
+                        encoding="utf-8",
+                    )
+                    logger.info("Exported calibration data: %s", json_path)
 
             # -- Post-loop: nonius + EEPROM for converged encoders --
             for enc in self._encoders:
@@ -315,8 +410,6 @@ class EncoderCalibrator:
         """
         # Re-acquire data one last time with converged analog params
         # to get the best nonius table.
-        # (In the architecture, the last iteration's analyze_result is reused.)
-        # We need the last analyze_result — re-run analyze to get SPO table.
         with self._motor.running():
             raw_data = self.acquire_raw_data()
 

@@ -26,8 +26,8 @@ class TestSplitRawPayload:
 
 
 @pytest.fixture
-def calibrator(mock_mc):
-    return EncoderCalibrator(mock_mc, axis=1, max_iterations=3)
+def calibrator(mock_mc, tmp_path):
+    return EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
 
 
 class TestCalibrateNoEncoders:
@@ -189,9 +189,9 @@ def mu_3sl_mock(mocker):
 class TestCalibrateConvergence:
     """Core calibration flow: convergence detection, iteration, analog adjustment."""
 
-    def test_converges_first_iteration(self, mock_mc, mocker, mu_3sl_mock) -> None:
-        """Single encoder converges on first try → success, EEPROM saved."""
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3)
+    def test_converges_first_iteration(self, mock_mc, mocker, mu_3sl_mock, tmp_path) -> None:
+        """Single encoder converges on first try -> success, EEPROM saved."""
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(1)
         _patch_encoder(enc, mocker)
 
@@ -204,9 +204,9 @@ class TestCalibrateConvergence:
         assert results[1].success is True
         assert results[1].iterations == 1
 
-    def test_converges_after_adjustment(self, mock_mc, mocker, mu_3sl_mock) -> None:
-        """Not converged → adjusts analog params → converges on iteration 2."""
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3)
+    def test_converges_after_adjustment(self, mock_mc, mocker, mu_3sl_mock, tmp_path) -> None:
+        """Not converged -> adjusts analog params -> converges on iteration 2."""
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(1)
         _patch_encoder(enc, mocker)
 
@@ -227,9 +227,9 @@ class TestCalibrateConvergence:
         enc.write_analog_adjustments.assert_called_once()
         cal_obj.adjust_analog_by_analyze_result.assert_called_once()
 
-    def test_non_convergence_skips_eeprom(self, mock_mc, mocker, mu_3sl_mock) -> None:
+    def test_non_convergence_skips_eeprom(self, mock_mc, mocker, mu_3sl_mock, tmp_path) -> None:
         """If never converges, EEPROM is not touched and result is failure."""
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3)
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(1)
         _patch_encoder(enc, mocker)
 
@@ -246,9 +246,9 @@ class TestCalibrateConvergence:
         assert results[1].success is False
         enc.save_to_eeprom.assert_not_called()
 
-    def test_syncs_dll_state_before_analysis(self, mock_mc, mocker, mu_3sl_mock) -> None:
-        """B1 fix: read_analog_adjustments → set_current before analyze_raw_data."""
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3)
+    def test_syncs_dll_state_before_analysis(self, mock_mc, mocker, mu_3sl_mock, tmp_path) -> None:
+        """B1 fix: read_analog_adjustments -> set_current before analyze_raw_data."""
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(1)
         _patch_encoder(enc, mocker)
         master_adj = mocker.MagicMock(name="m_adj")
@@ -275,9 +275,9 @@ class TestCalibrateConvergence:
 class TestCalibratePartialConvergence:
     """Two encoders: one converges, the other does not."""
 
-    def test_mixed_results(self, mock_mc, mocker) -> None:
+    def test_mixed_results(self, mock_mc, mocker, tmp_path) -> None:
         mu_mock = mocker.patch("ic_haus_magnetic_encoder_calibration.calibrator.mu_3sl")
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3)
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
 
         enc1 = cal.add_encoder(1)
         enc2 = cal.add_encoder(2)
@@ -317,8 +317,8 @@ class TestCalibratePartialConvergence:
 class TestCalibrateRestore:
     """Config is always restored: on success, non-convergence, and exception."""
 
-    def test_restores_on_success(self, mock_mc, mocker, mu_3sl_mock) -> None:
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3)
+    def test_restores_on_success(self, mock_mc, mocker, mu_3sl_mock, tmp_path) -> None:
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(1)
         _patch_encoder(enc, mocker)
         saved_drive = mocker.MagicMock(name="SavedDrive")
@@ -335,8 +335,8 @@ class TestCalibrateRestore:
         enc.set_drive_config.assert_called_with(saved_drive)
         enc.set_ic_config.assert_called_with(saved_ic)
 
-    def test_restores_on_exception(self, mock_mc, mocker, mu_3sl_mock) -> None:
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3)
+    def test_restores_on_exception(self, mock_mc, mocker, mu_3sl_mock, tmp_path) -> None:
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(1)
         _patch_encoder(enc, mocker)
         saved_drive = mocker.MagicMock(name="SavedDrive")
@@ -373,6 +373,24 @@ class TestCalibrationHardware:
         # Reset analog adjustments to zeros so calibration has work to do
         zeros = mu_3sl.AnalogTrackAdjustments(0, 0, 0, 0)
         enc.write_analog_adjustments(zeros, zeros)
+
+        cal.configure_internal_generator()
+
+        results = cal.calibrate()
+
+        assert 1 in results
+        result = results[1]
+        assert result.success is True
+        assert result.iterations >= 1
+
+    def test_calibrate_encoder_1_from_nonzero(self, mc) -> None:
+        """Calibration converges when starting from non-zero (mid-range) gains."""
+        cal = EncoderCalibrator(mc, axis=1, max_iterations=10)
+        enc = cal.add_encoder(1)
+
+        # Start from mid-range values (128 = center of 8-bit range)
+        mid = mu_3sl.AnalogTrackAdjustments(128, 128, 128, 128)
+        enc.write_analog_adjustments(mid, mid)
 
         cal.configure_internal_generator()
 

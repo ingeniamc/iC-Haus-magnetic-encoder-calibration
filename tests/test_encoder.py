@@ -90,7 +90,7 @@ class TestGetICConfig:
     """Tests for iC-MU config save/restore data integrity."""
 
     def test_roundtrip_preserves_values(self, encoder, mock_mc) -> None:
-        """get_ic_config → set_ic_config writes back the exact same register bytes."""
+        """get_ic_config -> set_ic_config writes back the exact same register bytes."""
         mock_mc.communication.get_register.side_effect = [
             0x80,
             0x02,

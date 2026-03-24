@@ -28,6 +28,9 @@ out.txt
 
 # Test files
 /pytest_reports/
+
+# Calibration diagnostic plots
+/calibration_output/
 /.coverage
 /coverage.xml
 

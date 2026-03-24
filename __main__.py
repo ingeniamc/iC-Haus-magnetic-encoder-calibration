@@ -3,6 +3,7 @@
 import argparse
 import logging
 import sys
+from pathlib import Path
 
 from ingeniamotion import MotionController
 
@@ -74,6 +75,17 @@ def parse_args() -> argparse.Namespace:
         help="Maximum analog calibration iterations (default: 3)",
     )
     parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("calibration_output"),
+        help="Directory for diagnostic plot PNGs (default: calibration_output)",
+    )
+    parser.add_argument(
+        "--interactive-plots",
+        action="store_true",
+        help="Also show plots interactively (in addition to saving PNGs)",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable debug logging",
@@ -103,6 +115,8 @@ def main() -> None:
         max_iterations=args.max_iterations,
         gen_frequency=args.gen_frequency,
         gen_current=args.gen_current,
+        output_dir=args.output_dir,
+        interactive_plots=args.interactive_plots,
     )
 
     encoder_numbers = [1, 2] if args.encoder == "both" else [int(args.encoder)]
