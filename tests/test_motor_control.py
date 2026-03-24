@@ -1,6 +1,7 @@
 import time
 
 import pytest
+from ingeniamotion.enums import SensorType
 
 from ic_haus_magnetic_encoder_calibration.encoder import Encoder
 from ic_haus_magnetic_encoder_calibration.ic_haus_registers import CFGEW
@@ -23,27 +24,17 @@ class TestHasFsoe:
         mock_mc.dictionary.is_safe = False
         assert motor.has_fsoe is False
 
-    def test_false_when_no_servo(self, motor, mock_mc) -> None:
-        mock_mc.servos = {}
-        assert motor.has_fsoe is False
-
 
 class TestStartMotor:
     def test_enables_motor_and_starts_generator(self, motor, mock_mc) -> None:
-        mock_mc.servos = {"default": mock_mc}
-        mock_mc.dictionary.is_safe = False
-
         motor._start_motor()
 
         mock_mc.motion.motor_enable.assert_called_once_with(axis=1)
         mock_mc.motion.internal_generator_saw_tooth_move.assert_called_once()
-        # Current ramp: 10 steps of set_current_quadrature
         assert mock_mc.motion.set_current_quadrature.call_count == 10
 
     def test_current_ramp_before_generator(self, motor, mock_mc) -> None:
         """Current must be ramped before the saw-tooth starts."""
-        mock_mc.servos = {"default": mock_mc}
-        mock_mc.dictionary.is_safe = False
         call_log: list[str] = []
         mock_mc.motion.set_current_quadrature.side_effect = lambda *_a, **_k: call_log.append(
             "current"
@@ -59,19 +50,19 @@ class TestStartMotor:
         assert all(c == "current" for c in call_log[:saw_idx])
 
 
-class TestStartFsoe:
+class TestPrepareFsoe:
     def test_raises_when_no_fsoe(self, motor, mock_mc) -> None:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = False
 
         with pytest.raises(RuntimeError, match="FSoE is not available"):
-            motor._start_fsoe()
+            motor.prepare_fsoe()
 
     def test_configures_fsoe_master(self, motor, mock_mc) -> None:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = True
 
-        motor._start_fsoe()
+        motor.prepare_fsoe()
 
         handler = mock_mc.fsoe.create_fsoe_master_handler.return_value
         mock_mc.fsoe.create_fsoe_master_handler.assert_called_once_with(use_sra=True)
@@ -79,17 +70,13 @@ class TestStartFsoe:
         handler.set_pdo_maps_to_slave.assert_called_once()
         handler.write_safe_parameters.assert_called_once()
         mock_mc.fsoe.start_master.assert_called_once_with(start_pdos=False)
-        mock_mc.capture.pdo.start_pdos.assert_called_once()
-        mock_mc.fsoe.wait_for_state_data.assert_called_once_with(timeout=15)
-        handler.sto_deactivate.assert_called_once()
-        handler.is_sto_active.assert_called_once()
 
     def test_sout_enabled_for_brake_release(self, motor, mock_mc) -> None:
         """SOut is enabled so the safety master controls brake release."""
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = True
 
-        motor._start_fsoe()
+        motor.prepare_fsoe()
 
         handler = mock_mc.fsoe.create_fsoe_master_handler.return_value
         sout_func = handler.sout_function.return_value
@@ -98,54 +85,49 @@ class TestStartFsoe:
         sout_func.sout_disable.set.assert_called_with(0)
 
 
-class TestStopFsoe:
-    def test_noop_when_not_active(self, motor, mock_mc) -> None:
-        motor._stop_fsoe()
-        mock_mc.fsoe.stop_master.assert_not_called()
+class TestActivatePdos:
+    def test_starts_pdo_exchange(self, motor, mock_mc) -> None:
+        motor.activate_pdos()
+        mock_mc.capture.pdo.start_pdos.assert_called_once()
 
-    def test_stops_when_active(self, motor, mock_mc) -> None:
+    def test_waits_for_data_state_when_fsoe_prepared(self, motor, mock_mc) -> None:
         mock_mc.servos = {"default": mock_mc}
         mock_mc.dictionary.is_safe = True
-        motor._start_fsoe()
+        motor.prepare_fsoe()
 
-        motor._stop_fsoe()
+        motor.activate_pdos()
+
+        mock_mc.fsoe.wait_for_state_data.assert_called_once_with(timeout=15)
+        handler = mock_mc.fsoe.create_fsoe_master_handler.return_value
+        handler.sto_deactivate.assert_called_once()
+
+
+class TestStopPdosAndFsoe:
+    def test_noop_when_not_active(self, motor, mock_mc) -> None:
+        motor.stop_pdos_and_fsoe()
+        mock_mc.fsoe.stop_master.assert_not_called()
+        mock_mc.capture.pdo.stop_pdos.assert_called_once()
+
+    def test_stops_fsoe_when_active(self, motor, mock_mc) -> None:
+        mock_mc.servos = {"default": mock_mc}
+        mock_mc.dictionary.is_safe = True
+        motor.prepare_fsoe()
+        motor.activate_pdos()
+
+        motor.stop_pdos_and_fsoe()
 
         mock_mc.fsoe.stop_master.assert_called_once_with(stop_pdos=True)
 
 
-class TestAutoFsoeOnStartMotor:
-    def test_starts_fsoe_automatically(self, motor, mock_mc) -> None:
-        mock_mc.servos = {"default": mock_mc}
-        mock_mc.dictionary.is_safe = True
-
-        motor._start_motor()
-
-        mock_mc.fsoe.create_fsoe_master_handler.assert_called_once()
-
-    def test_skips_fsoe_when_dict_not_safe(self, motor, mock_mc) -> None:
-        mock_mc.servos = {"default": mock_mc}
-        mock_mc.dictionary.is_safe = False
-
-        motor._start_motor()
-
-        mock_mc.fsoe.create_fsoe_master_handler.assert_not_called()
-
-
-class TestRunningContextManager:
+class TestMotorSpinning:
     def test_starts_and_stops_motor(self, motor, mock_mc) -> None:
-        mock_mc.servos = {"default": mock_mc}
-        mock_mc.dictionary.is_safe = False
-
-        with motor.running():
+        with motor.motor_spinning():
             mock_mc.motion.motor_enable.assert_called_once()
 
         mock_mc.motion.motor_disable.assert_called_once()
 
     def test_stops_on_exception(self, motor, mock_mc) -> None:
-        mock_mc.servos = {"default": mock_mc}
-        mock_mc.dictionary.is_safe = False
-
-        with pytest.raises(ValueError, match="test error"), motor.running():
+        with pytest.raises(ValueError, match="test error"), motor.motor_spinning():
             raise ValueError("test error")
 
         mock_mc.motion.motor_disable.assert_called_once()
@@ -177,7 +159,7 @@ def hw_encoder(mc):
     Returns:
         An Encoder with normal mode restored and error flags suppressed.
     """
-    enc = Encoder(mc, encoder_number=1, axis=1)
+    enc = Encoder(mc, sensor_type=SensorType.ABS1, axis=1)
     enc.ensure_normal_mode()
     enc._write_ic(CFGEW, 0xFF)
     return enc
@@ -191,19 +173,28 @@ class TestHasFsoeHardware:
 
 
 @pytest.mark.hardware
-class TestFsoeLifecycleHardware:
-    def test_start_and_stop_fsoe(self, hw_motor) -> None:
-        if not hw_motor.has_fsoe:
-            pytest.skip("Drive does not have FSoE")
-        with hw_motor._fsoe_session():
-            assert hw_motor._fsoe_active is True
-        assert hw_motor._fsoe_active is False
-
-
-@pytest.mark.hardware
 @pytest.mark.usefixtures(hw_encoder.__name__)
 class TestInternalGeneratorHardware:
     def test_start_and_stop_with_generator(self, hw_motor) -> None:
-        hw_motor.configure_internal_generator()
-        with hw_motor.running():
-            time.sleep(5)  # Let the motor spin
+        hw_motor.configure_encoders(
+            encoder_sensor_types=[],
+        )
+        if hw_motor.has_fsoe:
+            assert not hw_motor._fsoe_prepared
+            hw_motor.prepare_fsoe()
+            assert hw_motor._fsoe_prepared
+            assert not hw_motor._fsoe_active
+
+        hw_motor.activate_pdos()
+        if hw_motor.has_fsoe:
+            assert hw_motor._fsoe_active
+
+        try:
+            with hw_motor.motor_spinning():
+                time.sleep(2)
+        finally:
+            hw_motor.stop_pdos_and_fsoe()
+
+        if hw_motor.has_fsoe:
+            assert not hw_motor._fsoe_active
+            assert not hw_motor._fsoe_prepared

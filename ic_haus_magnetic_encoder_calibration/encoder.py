@@ -10,15 +10,13 @@ a BiSS channel on a Novanta/Ingenia drive. It handles:
 * Saving calibration results to EEPROM
 """
 
-from __future__ import annotations
-
 import logging
 import time
-from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 import mu_3sl_interface as mu_3sl
+from ingeniamotion import MotionController
+from ingeniamotion.enums import SensorType
 
 from .drive_encoder_registers import (
     CALIB_ERROR_TOLERANCE,
@@ -50,14 +48,8 @@ from .ic_haus_registers import (
     VOSS_M,
     VOSS_N,
     BissAction,
+    ICHausRegister,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Generator
-
-    from ingeniamotion import MotionController
-
-    from .ic_haus_registers import ICHausRegister
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +69,40 @@ _CALIB_TEST = 0x00
 # CRC issues, causing the drive to fault with 0x7380.
 _CALIB_CFGEW_SUPPRESS = 0xFF
 
-# EEPROM command
+# Raw data bit widths for master/nonius tracks in the BiSS payload.
+_MASTER_WIDTH = 14
+_NONIUS_WIDTH = 14
+_MASTER_MASK = (1 << _MASTER_WIDTH) - 1
+_NONIUS_MASK = (1 << _NONIUS_WIDTH) - 1
+
+
+def split_raw_payload(payload: int) -> tuple[int, int]:
+    """Extract 14-bit master and nonius from a packed BiSS payload.
+
+    Returns:
+        Tuple of (master, nonius) 14-bit values.
+    """
+    master = payload & _MASTER_MASK
+    nonius = (payload >> _NONIUS_WIDTH) & _NONIUS_MASK
+    return master, nonius
+
+
+# Factory default analog parameters per iC-MU Series datasheet (Rev B1).
+# These are the recommended starting values when no prior calibration exists.
+_FACTORY_DEFAULT_GX = 0x00  # Cosine gain: 0% (no correction)
+_FACTORY_DEFAULT_VOSS = 0x3F  # Sine offset: ~60-70 mV
+_FACTORY_DEFAULT_VOSC = 0x3F  # Cosine offset: ~60-70 mV
+_FACTORY_DEFAULT_PH = 0x3F  # Phase adjustment: baseline
+
+# iC-MU commands (CMD register 0x75)
 _CMD_WRITE_ALL = 0x01
+_CMD_ABS_RESET = 0x03
+
+# Mapping from drive feedback sensor type to physical encoder channel.
+_SENSOR_TYPE_TO_ENCODER: dict[SensorType, int] = {
+    SensorType.ABS1: 1,
+    SensorType.SSI2: 2,
+}
 
 
 @dataclass(frozen=True)
@@ -127,26 +151,33 @@ class Encoder:
 
     Args:
         mc: Connected MotionController instance.
-        encoder_number: Encoder channel (1 or 2).
+        sensor_type: Drive feedback sensor type for this encoder.
+            The encoder channel (1 or 2) is derived from the sensor type.
         axis: Drive axis number.
     """
 
     def __init__(
         self,
         mc: MotionController,
-        encoder_number: int,
+        sensor_type: SensorType,
         *,
         axis: int = 1,
     ) -> None:
         self._mc = mc
-        self._number = encoder_number
+        self._sensor_type = sensor_type
+        self._number = _SENSOR_TYPE_TO_ENCODER[sensor_type]
         self._axis = axis
-        self._regs = get_encoder_registers(encoder_number)
+        self._regs = get_encoder_registers(self._number)
 
     @property
     def number(self) -> int:
         """Encoder channel number (1 or 2)."""
         return self._number
+
+    @property
+    def sensor_type(self) -> SensorType:
+        """Drive feedback sensor type for this encoder."""
+        return self._sensor_type
 
     @property
     def regs(self) -> DriveEncoderRegisters:
@@ -177,10 +208,7 @@ class Encoder:
         time.sleep(_BISS_SETTLE_S)
         raw = int(self._mc.communication.get_register(regs.itf_data, axis=ax)) & 0xFF
         logger.debug(
-            "Encoder %d: _read_ic(0x%02X) -> 0x%02X",
-            self._number,
-            reg.address,
-            raw,
+            f"Encoder {self._number}: _read_ic(0x{reg.address:02X}) -> 0x{raw:02X}",
         )
         return raw
 
@@ -207,16 +235,13 @@ class Encoder:
         """
         raw = self._read_ic(HARD_REV)
         logger.debug(
-            "Encoder %d: HARD_REV(0x%02X) raw=0x%02X",
-            self._number,
-            HARD_REV.address,
-            raw,
+            f"Encoder {self._number}: HARD_REV(0x{HARD_REV.address:02X}) raw=0x{raw:02X}",
         )
         revision = mu_3sl.Revision(raw)
         if revision is mu_3sl.Revision.NONE:
             msg = f"Encoder {self._number}: unable to read revision (got 0x00)."
             raise RuntimeError(msg)
-        logger.info("Encoder %d: revision %s (0x%02X)", self._number, revision.name, raw)
+        logger.info(f"Encoder {self._number}: revision {revision.name} (0x{raw:02X})")
         return revision
 
     # -- Drive encoder frame config --
@@ -248,7 +273,7 @@ class Encoder:
         self._write_drive(r.pos_st_bits, config.pos_st_bits)
         self._write_drive(r.pos_start_bit, config.pos_start_bit)
         self._write_drive(r.error_tolerance, config.error_tolerance)
-        logger.info("Encoder %d: drive frame config applied.", self._number)
+        logger.info(f"Encoder {self._number}: drive frame config applied.")
 
     # -- iC-MU register config --
 
@@ -281,7 +306,7 @@ class Encoder:
         self._write_ic(TEST, state.test)
         self._write_ic(MPC, state.mpc)
         self._write_ic(CFGEW, state.cfgew)
-        logger.info("Encoder %d: iC-MU config registers applied.", self._number)
+        logger.info(f"Encoder {self._number}: iC-MU config registers applied.")
 
     # -- Calibration mode --
 
@@ -305,11 +330,9 @@ class Encoder:
             return True
 
         logger.warning(
-            "Encoder %d: not in normal mode (OUT_MSB=0x%02X, MODE_ST=%d); "
-            "restoring from previous interrupted calibration.",
-            self._number,
-            out_msb,
-            mode_st,
+            f"Encoder {self._number}: not in normal mode"
+            f" (OUT_MSB=0x{out_msb:02X}, MODE_ST={mode_st});"
+            f" restoring from previous interrupted calibration.",
         )
         # Restore to absolute mode with EEPROM-default output width
         lsb_raw = self._read_ic(OUT_LSB_ST)
@@ -325,8 +348,8 @@ class Encoder:
         enac_raw = self._read_ic(ENAC)
         enac_raw = ENAC.field("enac").insert(enac_raw, 0)
         self._write_ic(ENAC, enac_raw)
-        # Restore CFGEW to default (all error sources enabled)
-        self._write_ic(CFGEW, 0x00)
+        # Suppress all errors during recovery
+        self._write_ic(CFGEW, _CALIB_CFGEW_SUPPRESS)
         return False
 
     def configure_in_calibration_mode(self) -> int:
@@ -357,13 +380,17 @@ class Encoder:
         if modea_new != modea_orig:
             self._write_ic(MODEA_MODEB, modea_new)
 
-        # OUT_MSB + OUT_ZERO
+        # Configure output shift register length:
+        # OUT_MSB=0x0E selects bit 27 as the MSB (14 master + 14 nonius = 28 bits)
+        # OUT_ZERO=0x00 — no padding zeros (BiSS doesn't need them; SPI uses 0x04)
         out = OUT_MSB_ZERO.field("out_zero").insert(out_orig, _CALIB_OUT_ZERO_BISS)
         out = OUT_MSB_ZERO.field("out_msb").insert(out, _CALIB_OUT_MSB)
         if out != out_orig:
             self._write_ic(OUT_MSB_ZERO, out)
 
-        # OUT_LSB + MODE_ST = RAW
+        # Select raw master+nonius track output:
+        # MODE_ST=0x02 selects raw analog data (required for calibration)
+        # OUT_LSB=0x00 starts output from bit 0 (no truncation)
         lsb = OUT_LSB_ST.field("mode_st").insert(lsb_orig, _CALIB_MODE_ST_RAW)
         lsb = OUT_LSB_ST.field("out_lsb").insert(lsb, _CALIB_OUT_LSB)
         if lsb != lsb_orig:
@@ -377,7 +404,7 @@ class Encoder:
         # on error bits from the (still uncalibrated) encoder.
         self._write_ic(CFGEW, _CALIB_CFGEW_SUPPRESS)
 
-        # MPC: if 0x0C set to 0x0B
+        # MPC: if 0x0C set to 0x0B (per iC-Haus AN1 "Offline Calibration", Table 1)
         mpc_val = MPC.field("mpc").extract(mpc_orig)
         if mpc_val == 0x0C:
             new_mpc = MPC.field("mpc").insert(mpc_orig, 0x0B)
@@ -397,32 +424,10 @@ class Encoder:
 
         n_master_periods = 1 << mpc_val
         logger.info(
-            "Encoder %d: calibration mode configured (MPC=%d, periods=%d).",
-            self._number,
-            mpc_val,
-            n_master_periods,
+            f"Encoder {self._number}: calibration mode configured"
+            f" (MPC={mpc_val}, periods={n_master_periods}).",
         )
         return n_master_periods
-
-    @contextmanager
-    def in_calibration_mode(self) -> Generator[int]:
-        """Context manager: save config, enter calibration, restore on exit.
-
-        Saves the drive encoder frame configuration and iC-MU register
-        state, configures both for calibration, and restores everything
-        when the context exits (even on exception).
-
-        Yields:
-            Number of master periods (2^MPC).
-        """
-        drive_config = self.get_drive_config()
-        ic_state = self.get_ic_config()
-        n_master_periods = self.configure_in_calibration_mode()
-        try:
-            yield n_master_periods
-        finally:
-            self.set_ic_config(ic_state)
-            self.set_drive_config(drive_config)
 
     # -- Analog parameters --
 
@@ -468,6 +473,31 @@ class Encoder:
         self._write_ic(VOSC_N, nonius.cosine_offset)
         self._write_ic(PH_N, nonius.phase)
 
+    def reset_analog_to_factory_defaults(self) -> None:
+        """Reset analog parameters to iC-MU Series factory defaults.
+
+        Per the MU_Series datasheet (Rev B1), factory defaults are:
+            GX = 0x00 (0% cosine gain correction)
+            VOSS = 0x3F (sine offset ~60-70 mV)
+            VOSC = 0x3F (cosine offset ~60-70 mV)
+            PH = 0x3F (phase baseline)
+
+        This is useful when the current chip state is unknown or corrupted,
+        providing a sensible starting point for calibration iteration.
+        """
+        defaults = mu_3sl.AnalogTrackAdjustments(
+            _FACTORY_DEFAULT_GX,
+            _FACTORY_DEFAULT_VOSS,
+            _FACTORY_DEFAULT_VOSC,
+            _FACTORY_DEFAULT_PH,
+        )
+        self.write_analog_adjustments(defaults, defaults)
+        logger.info(
+            f"Encoder {self._number}: reset analog parameters to factory defaults"
+            f" (GX=0x{_FACTORY_DEFAULT_GX:02X}, VOSS=0x{_FACTORY_DEFAULT_VOSS:02X},"
+            f" VOSC=0x{_FACTORY_DEFAULT_VOSC:02X}, PH=0x{_FACTORY_DEFAULT_PH:02X})",
+        )
+
     # -- Nonius (SPO) parameters --
 
     def write_nonius_parameters(
@@ -499,20 +529,36 @@ class Encoder:
 
     # -- EEPROM --
 
-    def save_to_eeprom(self) -> bool:
+    def save_to_eeprom(self) -> None:
         """Issue WRITE_ALL to save configuration to iC-MU EEPROM.
 
-        Returns:
-            True on success, False on error.
+        Raises:
+            RuntimeError: If EEPROM write fails (EPR_ERR or CRC_ERR).
         """
         self._write_ic(CMD, _CMD_WRITE_ALL)
         time.sleep(1.0)
         status = self._read_ic(STATUS1)
         if STATUS1.field("epr_err").extract(status):
-            logger.error("Encoder %d: EEPROM write error (EPR_ERR).", self._number)
-            return False
+            msg = f"Encoder {self._number}: EEPROM write error (EPR_ERR)."
+            raise RuntimeError(msg)
         if STATUS1.field("crc_err").extract(status):
-            logger.error("Encoder %d: CRC error after EEPROM write.", self._number)
-            return False
-        logger.info("Encoder %d: EEPROM saved successfully.", self._number)
-        return True
+            msg = f"Encoder {self._number}: CRC error after EEPROM write."
+            raise RuntimeError(msg)
+        logger.info(f"Encoder {self._number}: EEPROM saved successfully.")
+
+    def enable_all_errors(self) -> None:
+        """Set CFGEW=0x00 so all error/warning sources are visible."""
+        self._write_ic(CFGEW, 0x00)
+        logger.info(f"Encoder {self._number}: all errors enabled (CFGEW=0x00).")
+
+    def abs_reset(self) -> None:
+        """Issue an ABS_RESET command to clear a startup NON_CTR error.
+
+        After power-on the iC-MU may report a nonius consistency error
+        (NON_CTR bit in STATUS1) because the period counter has not yet
+        been synchronised with the nonius position.  ABS_RESET forces a
+        fresh absolute-position calculation which clears the flag.
+        """
+        self._write_ic(CMD, _CMD_ABS_RESET)
+        time.sleep(_BISS_SETTLE_S)
+        logger.info(f"Encoder {self._number}: ABS_RESET issued.")

@@ -1,4 +1,5 @@
 import pytest
+from ingeniamotion.enums import SensorType
 
 from ic_haus_magnetic_encoder_calibration.drive_encoder_registers import (
     ENCODER_1_REGS,
@@ -15,7 +16,7 @@ from ic_haus_magnetic_encoder_calibration.ic_haus_registers import (
 
 @pytest.fixture
 def encoder(mock_mc):
-    return Encoder(mock_mc, encoder_number=1, axis=1)
+    return Encoder(mock_mc, sensor_type=SensorType.ABS1, axis=1)
 
 
 class TestBissReadWrite:
@@ -75,15 +76,17 @@ class TestConfigureInCalibrationMode:
 class TestSaveToEeprom:
     def test_success(self, encoder, mock_mc) -> None:
         mock_mc.communication.get_register.return_value = 0x00
-        assert encoder.save_to_eeprom() is True
+        encoder.save_to_eeprom()  # should not raise
 
     def test_epr_error(self, encoder, mock_mc) -> None:
         mock_mc.communication.get_register.return_value = 0x40
-        assert encoder.save_to_eeprom() is False
+        with pytest.raises(RuntimeError, match="EPR_ERR"):
+            encoder.save_to_eeprom()
 
     def test_crc_error(self, encoder, mock_mc) -> None:
         mock_mc.communication.get_register.return_value = 0x80
-        assert encoder.save_to_eeprom() is False
+        with pytest.raises(RuntimeError, match="CRC error"):
+            encoder.save_to_eeprom()
 
 
 class TestGetICConfig:
@@ -113,25 +116,6 @@ class TestGetICConfig:
         assert data_writes == [0x80, 0x02, 0xCE, 0x20, 0x00, 0x05, 0x00]
 
 
-class TestInCalibrationModeContextManager:
-    """Context manager must always restore config, even on exception."""
-
-    def test_restores_on_exception(self, encoder, mocker) -> None:
-        saved_drive = mocker.MagicMock(name="DriveConfig")
-        saved_ic = mocker.MagicMock(name="ICConfig")
-        mocker.patch.object(encoder, "get_drive_config", return_value=saved_drive)
-        mocker.patch.object(encoder, "get_ic_config", return_value=saved_ic)
-        mocker.patch.object(encoder, "configure_in_calibration_mode", return_value=32)
-        mocker.patch.object(encoder, "set_ic_config")
-        mocker.patch.object(encoder, "set_drive_config")
-
-        with pytest.raises(ValueError, match="test error"), encoder.in_calibration_mode():
-            raise ValueError("test error")
-
-        encoder.set_ic_config.assert_called_once_with(saved_ic)
-        encoder.set_drive_config.assert_called_once_with(saved_drive)
-
-
 # ---------------------------------------------------------------------------
 #  Hardware integration tests (require a physical drive)
 # ---------------------------------------------------------------------------
@@ -144,7 +128,7 @@ def hw_encoder(mc):
     Returns:
         An Encoder configured for encoder 1 on axis 1.
     """
-    return Encoder(mc, encoder_number=1, axis=1)
+    return Encoder(mc, sensor_type=SensorType.ABS1, axis=1)
 
 
 @pytest.mark.hardware
@@ -183,18 +167,6 @@ class TestCalibrationModeHardware:
         finally:
             hw_encoder.set_ic_config(ic_state)
             hw_encoder.set_drive_config(drive_config)
-
-    def test_context_manager_restores_config(self, hw_encoder) -> None:
-        drive_before = hw_encoder.get_drive_config()
-        ic_before = hw_encoder.get_ic_config()
-
-        with hw_encoder.in_calibration_mode() as n_periods:
-            assert n_periods > 0
-
-        drive_after = hw_encoder.get_drive_config()
-        ic_after = hw_encoder.get_ic_config()
-        assert drive_after == drive_before
-        assert ic_after == ic_before
 
 
 @pytest.mark.hardware

@@ -51,4 +51,9 @@ class TestDriveEncoderRegistersFields:
         assert "BISS2" in r.itf_addr
         assert "BISS2" in r.itf_data
         assert "BISS2" in r.itf_ctl
-        assert "BISS2" in r.pos_value
+
+    def test_encoder_2_uses_ssi2_for_position(self) -> None:
+        r = ENCODER_2_REGS
+        assert "SSI2" in r.pos_value
+        assert "SSI2" in r.frame_size
+        assert "SSI2" in r.pos_bits

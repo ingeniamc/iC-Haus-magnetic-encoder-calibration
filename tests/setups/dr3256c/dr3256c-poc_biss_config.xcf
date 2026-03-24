@@ -99,12 +99,12 @@
 				<Register access="rw" dtype="u16" id="FBK_BISS1_SSI1_POS_BITS" subnode="1" storage="19"/>
 				<Register access="rw" dtype="u16" id="FBK_BISS1_SSI1_POS_ST_BITS" subnode="1" storage="19"/>
 				<Register access="rw" dtype="u16" id="FBK_BISS1_SSI1_POS_START_BIT" subnode="1" storage="8"/>
-				<Register access="rw" dtype="u16" id="FBK_SSI2_FRAME_SIZE" subnode="1" storage="28"/>
+				<Register access="rw" dtype="u16" id="FBK_SSI2_FRAME_SIZE" subnode="1" storage="27"/>
 				<Register access="rw" dtype="u16" id="FBK_SSI2_ERROR_TOLERANCE" subnode="1" storage="5"/>
 				<Register access="rw" dtype="u16" id="FBK_SSI2_POS_POLARITY" subnode="1" storage="0"/>
 				<Register access="rw" dtype="u16" id="FBK_SSI2_FRAME_TYPE" subnode="1" storage="0"/>
-				<Register access="rw" dtype="u16" id="FBK_SSI2_POS_BITS" subnode="1" storage="20"/>
-				<Register access="rw" dtype="u16" id="FBK_SSI2_POS_ST_BITS" subnode="1" storage="20"/>
+				<Register access="rw" dtype="u16" id="FBK_SSI2_POS_BITS" subnode="1" storage="19"/>
+				<Register access="rw" dtype="u16" id="FBK_SSI2_POS_ST_BITS" subnode="1" storage="19"/>
 				<Register access="rw" dtype="u16" id="FBK_SSI2_POS_START_BIT" subnode="1" storage="8"/>
 				<Register access="rw" dtype="u16" id="FBK_GEN_MODE" subnode="1" storage="1"/>
 				<Register access="rw" dtype="float" id="FBK_GEN_FREQ" subnode="1" storage="0.1"/>

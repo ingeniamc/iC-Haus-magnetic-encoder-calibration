@@ -6,7 +6,6 @@ channel.  These are the keys used with
 ``MotionController.communication.{get,set}_register``.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 
@@ -56,12 +55,12 @@ ENCODER_2_REGS = DriveEncoderRegisters(
     itf_addr="FBK_BISS2_SSI2_ITF_ADDR",
     itf_data="FBK_BISS2_SSI2_ITF_DATA",
     itf_ctl="FBK_BISS2_SSI2_ITF_CTL",
-    pos_value="FBK_BISS2_POS_VALUE",
-    frame_size="FBK_BISS2_FRAME_SIZE",
-    pos_bits="FBK_BISS2_POS_BITS",
-    pos_st_bits="FBK_BISS2_POS_ST_BITS",
-    pos_start_bit="FBK_BISS2_POS_START_BIT",
-    error_tolerance="FBK_BISS2_ERROR_TOLERANCE",
+    pos_value="FBK_SSI2_POS_VALUE",
+    frame_size="FBK_SSI2_FRAME_SIZE",
+    pos_bits="FBK_SSI2_POS_BITS",
+    pos_st_bits="FBK_SSI2_POS_ST_BITS",
+    pos_start_bit="FBK_SSI2_POS_START_BIT",
+    error_tolerance="FBK_SSI2_ERROR_TOLERANCE",
 )
 
 

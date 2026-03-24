@@ -11,24 +11,17 @@ Generates three types of figures:
 Each figure is saved as a PNG and, optionally, shown interactively.
 """
 
-from __future__ import annotations
-
 import logging
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import matplotlib
 import matplotlib.pyplot as plt
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-    import mu_3sl_interface as mu_3sl
-    from matplotlib.figure import Figure
+from matplotlib.figure import Figure
 
 logger = logging.getLogger(__name__)
 
-# Convergence threshold (mirrors calibrator._RESIDUAL_THRESHOLD)
-_THRESHOLD = 1.0
+# Convergence threshold
+RESIDUAL_THRESHOLD = 1.0
 
 # Labels for the 8 residual values
 _RESIDUAL_LABELS = [
@@ -43,31 +36,9 @@ _RESIDUAL_LABELS = [
 ]
 
 
-def _extract_residuals(
-    analyze_result: mu_3sl.AnalyzeResult,
-) -> list[float]:
-    """Return the 8 residual values as a flat list.
-
-    Returns:
-        List of 8 floats: [master gx, voss, vosc, ph, nonius gx, voss, vosc, ph].
-    """
-    m = analyze_result.relative_master_track_adjustments()
-    n = analyze_result.relative_nonius_track_adjustments()
-    return [
-        m.cosine_gain_lsb,
-        m.sine_offset_lsb,
-        m.cosine_offset_lsb,
-        m.phase_lsb,
-        n.cosine_gain_lsb,
-        n.sine_offset_lsb,
-        n.cosine_offset_lsb,
-        n.phase_lsb,
-    ]
-
-
 def _save_and_show(fig: Figure, path: Path, *, interactive: bool) -> None:
     fig.savefig(path, dpi=150, bbox_inches="tight")
-    logger.info("Saved plot: %s", path)
+    logger.info(f"Saved plot: {path}")
     if interactive:
         fig.show()
         plt.pause(0.1)
@@ -84,7 +55,7 @@ def _ensure_backend(*, interactive: bool) -> None:
         matplotlib.use("Agg", force=True)
 
 
-def plot_raw_waveforms(
+def _plot_raw_waveforms(
     master_raw: list[int],
     nonius_raw: list[int],
     *,
@@ -124,8 +95,8 @@ def plot_raw_waveforms(
     return path
 
 
-def plot_residuals_bar(
-    analyze_result: mu_3sl.AnalyzeResult,
+def _plot_residuals_bar(
+    residuals: list[float],
     *,
     encoder: int,
     iteration: int,
@@ -135,7 +106,7 @@ def plot_residuals_bar(
     """Plot a bar chart of the 8 analog residuals vs the convergence threshold.
 
     Args:
-        analyze_result: Result from ``Calibration.analyze_raw_data()``.
+        residuals: List of 8 residual values [M gx, voss, vosc, ph, N gx, voss, vosc, ph].
         encoder: Encoder channel number.
         iteration: Current calibration iteration.
         output_dir: Directory for PNG output.
@@ -145,13 +116,14 @@ def plot_residuals_bar(
         Path to the saved PNG file.
     """
     _ensure_backend(interactive=interactive)
-    residuals = _extract_residuals(analyze_result)
     abs_residuals = [abs(r) for r in residuals]
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    colors = ["tab:green" if v <= _THRESHOLD else "tab:red" for v in abs_residuals]
+    colors = ["tab:green" if v <= RESIDUAL_THRESHOLD else "tab:red" for v in abs_residuals]
     ax.bar(_RESIDUAL_LABELS, abs_residuals, color=colors)
-    ax.axhline(_THRESHOLD, color="black", linestyle="--", linewidth=1, label="Threshold (1.0 LSB)")
+    ax.axhline(
+        RESIDUAL_THRESHOLD, color="black", linestyle="--", linewidth=1, label="Threshold (1.0 LSB)"
+    )
     ax.set_ylabel("|Residual| (LSB)")
     ax.set_title(f"Encoder {encoder} - Iteration {iteration}: Residuals")
     ax.legend()
@@ -165,7 +137,7 @@ def plot_residuals_bar(
     return path
 
 
-def plot_residuals_trend(
+def _plot_residuals_trend(
     history: dict[int, list[list[float]]],
     *,
     encoder: int,
@@ -192,7 +164,7 @@ def plot_residuals_trend(
         values = [abs(row[idx]) for row in data]
         ax.plot(iterations, values, marker="o", label=label)
 
-    ax.axhline(_THRESHOLD, color="black", linestyle="--", linewidth=1, label="Threshold")
+    ax.axhline(RESIDUAL_THRESHOLD, color="black", linestyle="--", linewidth=1, label="Threshold")
     ax.set_xlabel("Iteration")
     ax.set_ylabel("|Residual| (LSB)")
     ax.set_title(f"Encoder {encoder} - Residuals Trend")

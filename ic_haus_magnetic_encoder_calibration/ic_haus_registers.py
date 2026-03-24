@@ -5,8 +5,6 @@ iC-MU register used in calibration, together with the ``BissAction`` enum
 that drives the BiSS bidirectional interface.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from enum import IntEnum
 
@@ -43,7 +41,7 @@ class ICHausRegisterField:
     name: str = ""
 
     @classmethod
-    def from_bits(cls, *, low: int, high: int, name: str = "") -> ICHausRegisterField:
+    def from_bits(cls, *, low: int, high: int, name: str = "") -> "ICHausRegisterField":
         """Create a field spanning bits [low, high] (inclusive).
 
         Args:

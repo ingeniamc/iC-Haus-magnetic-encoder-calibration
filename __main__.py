@@ -6,14 +6,29 @@ import sys
 from pathlib import Path
 
 from ingeniamotion import MotionController
+from ingeniamotion.enums import SensorType
 
-from ic_haus_magnetic_encoder_calibration.calibrator import EncoderCalibrator
+from ic_haus_magnetic_encoder_calibration.calibrator import (
+    DEFAULT_CAPTURE_DURATION_S,
+    DEFAULT_PDO_RATE_S,
+    EncoderCalibrator,
+)
 from ic_haus_magnetic_encoder_calibration.motor_control import (
     DEFAULT_GEN_CURRENT,
     DEFAULT_GEN_FREQ,
 )
 
 logger = logging.getLogger("ic_haus_magnetic_encoder_calibration")
+
+
+def _parse_bool(value: str) -> bool:
+    """Parse a boolean CLI argument value."""
+    if value.lower() in ("true", "1", "yes"):
+        return True
+    if value.lower() in ("false", "0", "no"):
+        return False
+    msg = f"Expected true/false, got {value!r}"
+    raise argparse.ArgumentTypeError(msg)
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,8 +86,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-iterations",
         type=int,
-        default=3,
-        help="Maximum analog calibration iterations (default: 3)",
+        default=10,
+        help="Maximum analog calibration iterations (default: 10)",
+    )
+    parser.add_argument(
+        "--pdo-rate-ms",
+        type=float,
+        default=DEFAULT_PDO_RATE_S * 1000,
+        help=(
+            "PDO cycle time in milliseconds"
+            f" (default: {DEFAULT_PDO_RATE_S * 1000})"
+        ),
+    )
+    parser.add_argument(
+        "--capture-duration",
+        type=float,
+        default=DEFAULT_CAPTURE_DURATION_S,
+        help=(
+            "Data capture duration per iteration in seconds"
+            f" (default: {DEFAULT_CAPTURE_DURATION_S})"
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -84,6 +117,34 @@ def parse_args() -> argparse.Namespace:
         "--interactive-plots",
         action="store_true",
         help="Also show plots interactively (in addition to saving PNGs)",
+    )
+    parser.add_argument(
+        "--save-raw-plots",
+        type=_parse_bool,
+        default=False,
+        metavar="BOOL",
+        help="Save per-iteration raw waveform PNGs (default: false)",
+    )
+    parser.add_argument(
+        "--save-residual-bar-plots",
+        type=_parse_bool,
+        default=False,
+        metavar="BOOL",
+        help="Save per-iteration residual bar chart PNGs (default: false)",
+    )
+    parser.add_argument(
+        "--save-trend-plot",
+        type=_parse_bool,
+        default=True,
+        metavar="BOOL",
+        help="Save the residuals trend PNG (default: true)",
+    )
+    parser.add_argument(
+        "--save-json",
+        type=_parse_bool,
+        default=True,
+        metavar="BOOL",
+        help="Save JSON export of calibration data (default: true)",
     )
     parser.add_argument(
         "--verbose",
@@ -115,27 +176,29 @@ def main() -> None:
         max_iterations=args.max_iterations,
         gen_frequency=args.gen_frequency,
         gen_current=args.gen_current,
+        pdo_rate=args.pdo_rate_ms / 1000.0,
+        capture_duration=args.capture_duration,
         output_dir=args.output_dir,
         interactive_plots=args.interactive_plots,
+        save_raw_plots=args.save_raw_plots,
+        save_residual_bar_plots=args.save_residual_bar_plots,
+        save_trend_plot=args.save_trend_plot,
+        save_json=args.save_json,
     )
 
+    encoder_sensor_types = {1: SensorType.ABS1, 2: SensorType.SSI2}
     encoder_numbers = [1, 2] if args.encoder == "both" else [int(args.encoder)]
     for num in encoder_numbers:
-        calibrator.add_encoder(num)
+        calibrator.add_encoder(encoder_sensor_types[num])
 
-    calibrator.configure_internal_generator()
+    calibrator.configure_encoders()
 
     results = calibrator.calibrate()
 
     all_ok = True
     for enc_num, result in results.items():
         status = "SUCCESS" if result.success else "FAILED"
-        logger.info(
-            "Encoder %d: %s (%d iterations)",
-            enc_num,
-            status,
-            result.iterations,
-        )
+        logger.info(f"Encoder {enc_num}: {status} ({result.iterations} iterations)")
         if not result.success:
             all_ok = False
 

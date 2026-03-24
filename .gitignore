@@ -17,7 +17,7 @@ _deps
 _install
 _build
 *.o
-out.txt
+*.txt
 
 # os
 .DS_Store
