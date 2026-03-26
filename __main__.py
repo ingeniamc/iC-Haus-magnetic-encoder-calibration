@@ -147,6 +147,12 @@ def parse_args() -> argparse.Namespace:
         help="Save JSON export of calibration data (default: true)",
     )
     parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to an XCF configuration file to load onto the drive before calibration",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable debug logging",
@@ -169,6 +175,10 @@ def main() -> None:
         slave_id=args.slave_id,
         dict_path=args.dictionary,
     )
+
+    if args.config is not None:
+        mc.configuration.load_configuration(str(args.config))
+        logger.info(f"Loaded configuration: {args.config}")
 
     calibrator = EncoderCalibrator(
         mc,

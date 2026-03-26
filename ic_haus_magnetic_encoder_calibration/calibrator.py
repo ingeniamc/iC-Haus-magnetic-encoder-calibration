@@ -19,7 +19,7 @@ from collections import deque
 from pathlib import Path
 
 import mu_3sl_interface as mu_3sl
-from ingenialink.pdo import TPDOMap
+from ingenialink.pdo import RPDOMap, RPDOMapItem, TPDOMap
 from ingeniamotion import MotionController
 from ingeniamotion.enums import SensorType
 
@@ -402,6 +402,7 @@ class EncoderCalibrator:
         self._save_json = save_json
         # PDO state
         self._tpdo_map: TPDOMap | None = None
+        self._padding_rpdo: RPDOMap | None = None
         self._pdo_buffer: deque[list[int]] = deque()
         self._pdo_lock = threading.Lock()
         self._pdo_collecting = False
@@ -445,6 +446,11 @@ class EncoderCalibrator:
         ``TPDOMapItem`` instances from the drive dictionary UIDs, then
         registers the map on the servo via
         ``mc.capture.pdo.set_pdo_maps_to_slave()``.
+
+        For non-FSoE drives a 1-byte padding RPDO is included so that
+        the slave has at least one RPDO mapping—required by the
+        EtherCAT state machine to reach SafeOp.  When FSoE is present
+        its handler provides its own RPDOs, so no padding is needed.
         """
         tpdo_map = TPDOMap()
         for enc in self._encoders:
@@ -454,8 +460,20 @@ class EncoderCalibrator:
             )
             tpdo_map.add_item(item)
 
+        # Non-FSoE drives need at least one RPDO for SafeOp transition.
+        rpdo_maps: list[RPDOMap] = []
+        if not self._motor.has_fsoe:
+            padding = RPDOMap()
+            item = RPDOMapItem(size_bits=8)
+            item.raw_data_bytes = int.to_bytes(0, 1, "little")
+            padding.add_item(item)
+            rpdo_maps.append(padding)
+            self._padding_rpdo: RPDOMap | None = padding
+        else:
+            self._padding_rpdo = None
+
         self._mc.capture.pdo.set_pdo_maps_to_slave(
-            rpdo_maps=[],
+            rpdo_maps=rpdo_maps,
             tpdo_maps=[tpdo_map],
         )
         tpdo_map.subscribe_to_process_data_event(self._on_pdo_data)
@@ -464,12 +482,15 @@ class EncoderCalibrator:
         logger.info(f"Data TPDO configured ({len(self._encoders)} encoder registers mapped).")
 
     def _teardown_data_tpdo(self) -> None:
-        """Unsubscribe and remove the data TPDO map from the servo."""
+        """Unsubscribe and remove the data TPDO/RPDO maps from the servo."""
         if self._tpdo_map is None:
             return
         self._tpdo_map.unsubscribe_to_process_data_event()
         self._mc.capture.pdo.remove_tpdo_map(tpdo_map=self._tpdo_map)
         self._tpdo_map = None
+        if self._padding_rpdo is not None:
+            self._mc.capture.pdo.remove_rpdo_map(rpdo_map=self._padding_rpdo)
+            self._padding_rpdo = None
 
     def _on_pdo_data(self) -> None:
         """TPDO process-data callback (runs in PDO exchange thread)."""

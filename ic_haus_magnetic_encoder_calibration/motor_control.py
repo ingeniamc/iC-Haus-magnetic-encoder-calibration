@@ -62,6 +62,7 @@ class MotorControl:
         self._handler: FSoEMasterHandler | None = None
         self._gen_frequency = gen_frequency
         self._gen_current = gen_current
+        self._pdo_exception: Exception | None = None
 
     @property
     def gen_frequency(self) -> float:
@@ -78,6 +79,10 @@ class MotorControl:
         """True if the connected drive has FSoE (safety) capability."""
         servo = self._mc.servos["default"]
         return servo.dictionary.is_safe
+
+    def _on_pdo_exception(self, exc: Exception) -> None:
+        """Callback for PDO exchange thread exceptions."""
+        self._pdo_exception = exc
 
     # -- FSoE lifecycle (two-phase) --
 
@@ -147,11 +152,21 @@ class MotorControl:
         Args:
             refresh_rate: PDO cycle time in seconds.  ``None`` uses the
                 library default (10 ms).
+
+        Raises:
+            RuntimeError: If the PDO exchange fails to start.
         """
+        self._pdo_exception = None
+        self._mc.capture.pdo.subscribe_to_exceptions(self._on_pdo_exception)
         self._mc.capture.pdo.start_pdos(
             refresh_rate=refresh_rate,
             watchdog_timeout=_PDO_WATCHDOG_TIMEOUT,
         )
+        # Give the PDO thread time to stabilise and detect failures.
+        time.sleep(3)
+        if self._pdo_exception is not None:
+            msg = f"PDO exchange failed to start: {self._pdo_exception}"
+            raise RuntimeError(msg)
         logger.info("PDO exchange started.")
 
         if self._fsoe_prepared:
@@ -170,6 +185,7 @@ class MotorControl:
 
     def stop_pdos_and_fsoe(self) -> None:
         """Stop PDO exchange and FSoE if active."""
+        self._mc.capture.pdo.unsubscribe_to_exceptions()
         if self._fsoe_active:
             assert self._handler is not None
             self._mc.fsoe.stop_master(stop_pdos=True)
