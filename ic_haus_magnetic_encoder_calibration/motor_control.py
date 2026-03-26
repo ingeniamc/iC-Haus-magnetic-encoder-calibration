@@ -31,7 +31,7 @@ _GEN_CYCLES = 10_000  # generous upper bound; calibration finishes well before e
 _GEN_DIRECTION = 1  # saw-tooth direction (positive = forward)
 _RAMP_STEPS = 10  # number of current ramp steps
 _RAMP_INTERVAL = 0.2  # seconds between ramp steps
-_PDO_WATCHDOG_TIMEOUT = 1.0  # seconds — generous to tolerate Windows timing spikes
+_PDO_WATCHDOG_TIMEOUT = 6.0  # seconds — generous to tolerate GIL blocking (matplotlib, etc.)
 
 
 class MotorControl:
@@ -185,7 +185,7 @@ class MotorControl:
 
     def stop_pdos_and_fsoe(self) -> None:
         """Stop PDO exchange and FSoE if active."""
-        self._mc.capture.pdo.unsubscribe_to_exceptions()
+        self._mc.capture.pdo.unsubscribe_to_exceptions(self._on_pdo_exception)
         if self._fsoe_active:
             assert self._handler is not None
             self._mc.fsoe.stop_master(stop_pdos=True)

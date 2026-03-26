@@ -174,6 +174,13 @@ class _SingleEncoderCalibration:
         """
         self.iteration_count = iteration
 
+        if not raw_data:
+            logger.warning(
+                f"Encoder {self.number}: 0 samples captured at iteration"
+                f" {iteration} — PDO exchange may have died. Skipping.",
+            )
+            return
+
         # Unpack packed register values into master / nonius tracks.
         master_raw: list[int] = []
         nonius_raw: list[int] = []
@@ -637,8 +644,9 @@ class EncoderCalibrator:
                 if self._save_json:
                     for enc in encoders:
                         enc.export_data(self._output_dir)
-                self._teardown_data_tpdo()
+                # Stop PDOs first (returns slave to pre-op), then remove maps.
                 self._motor.stop_pdos_and_fsoe()
+                self._teardown_data_tpdo()
 
         finally:
             for enc in encoders:
