@@ -6,7 +6,6 @@ channel.  These are the keys used with
 ``MotionController.communication.{get,set}_register``.
 """
 
-
 from dataclasses import dataclass
 
 # Drive encoder frame settings for calibration raw mode.

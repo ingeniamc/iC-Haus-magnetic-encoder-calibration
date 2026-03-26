@@ -218,11 +218,13 @@ class MotorControl:
         self._mc.configuration.set_reference_feedback(SensorType.INTGEN, axis=self._axis)
         if len(encoder_sensor_types) > 0:
             self._mc.configuration.set_auxiliar_feedback(
-                encoder_sensor_types[0], axis=self._axis,
+                encoder_sensor_types[0],
+                axis=self._axis,
             )
         if len(encoder_sensor_types) > 1:
             self._mc.configuration.set_reference_feedback(
-                encoder_sensor_types[1], axis=self._axis,
+                encoder_sensor_types[1],
+                axis=self._axis,
             )
         logger.info("Encoder feedback configured.")
 

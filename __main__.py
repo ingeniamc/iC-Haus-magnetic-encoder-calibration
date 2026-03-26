@@ -93,10 +93,7 @@ def parse_args() -> argparse.Namespace:
         "--pdo-rate-ms",
         type=float,
         default=DEFAULT_PDO_RATE_S * 1000,
-        help=(
-            "PDO cycle time in milliseconds"
-            f" (default: {DEFAULT_PDO_RATE_S * 1000})"
-        ),
+        help=(f"PDO cycle time in milliseconds (default: {DEFAULT_PDO_RATE_S * 1000})"),
     )
     parser.add_argument(
         "--capture-duration",

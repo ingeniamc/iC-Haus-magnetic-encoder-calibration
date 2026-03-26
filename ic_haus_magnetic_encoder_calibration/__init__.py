@@ -1,6 +1,5 @@
 """iC-Haus Magnetic Encoder Calibration library."""
 
-
 from .calibrator import EncoderCalibrator
 from .drive_encoder_registers import DriveEncoderRegisters, get_encoder_registers
 from .encoder import (

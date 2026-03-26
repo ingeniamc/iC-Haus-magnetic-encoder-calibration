@@ -188,8 +188,10 @@ def _setup_converging_calibration(cal, mocker, mu_mock, analyze_results):
     mocker.patch.object(cal, "_acquire_raw_data", return_value={1: [1 | (2 << 14)]})
     # Mock PDO/motor lifecycle
     mocker.patch.object(
-        type(cal._motor), "has_fsoe",
-        new_callable=mocker.PropertyMock, return_value=False,
+        type(cal._motor),
+        "has_fsoe",
+        new_callable=mocker.PropertyMock,
+        return_value=False,
     )
     mocker.patch.object(cal, "_setup_data_tpdo")
     mocker.patch.object(cal, "_teardown_data_tpdo")
@@ -314,8 +316,10 @@ class TestCalibrateBothEncoders:
         _patch_encoder(enc2, mocker)
 
         mocker.patch.object(
-            type(cal._motor), "has_fsoe",
-            new_callable=mocker.PropertyMock, return_value=False,
+            type(cal._motor),
+            "has_fsoe",
+            new_callable=mocker.PropertyMock,
+            return_value=False,
         )
         mocker.patch.object(cal, "_setup_data_tpdo")
         mocker.patch.object(cal, "_teardown_data_tpdo")
@@ -360,8 +364,10 @@ class TestCalibrateBothEncoders:
         _patch_encoder(enc2, mocker)
 
         mocker.patch.object(
-            type(cal._motor), "has_fsoe",
-            new_callable=mocker.PropertyMock, return_value=False,
+            type(cal._motor),
+            "has_fsoe",
+            new_callable=mocker.PropertyMock,
+            return_value=False,
         )
         mocker.patch.object(cal, "_setup_data_tpdo")
         mocker.patch.object(cal, "_teardown_data_tpdo")
@@ -427,8 +433,10 @@ class TestCalibrateRestore:
 
         mu_3sl_mock.Calibration.return_value = mocker.MagicMock()
         mocker.patch.object(
-            type(cal._motor), "has_fsoe",
-            new_callable=mocker.PropertyMock, return_value=False,
+            type(cal._motor),
+            "has_fsoe",
+            new_callable=mocker.PropertyMock,
+            return_value=False,
         )
         mocker.patch.object(cal, "_setup_data_tpdo")
         mocker.patch.object(cal, "_teardown_data_tpdo")
@@ -446,6 +454,7 @@ class TestCalibrateRestore:
 
         enc.set_ic_config.assert_called_with(saved_ic)
         enc.set_drive_config.assert_called_with(saved_drive)
+
 
 # ---------------------------------------------------------------------------
 #  Hardware integration tests (require a physical drive + encoder)

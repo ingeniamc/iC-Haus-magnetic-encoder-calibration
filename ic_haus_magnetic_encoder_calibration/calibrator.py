@@ -261,21 +261,27 @@ class _SingleEncoderCalibration:
         # -- Diagnostics: plots --
         if save_raw_plots:
             _plot_raw_waveforms(
-                master_raw, nonius_raw,
-                encoder=self.number, iteration=iteration,
-                output_dir=output_dir, interactive=interactive,
+                master_raw,
+                nonius_raw,
+                encoder=self.number,
+                iteration=iteration,
+                output_dir=output_dir,
+                interactive=interactive,
             )
         if save_residual_bar_plots:
             _plot_residuals_bar(
                 residuals,
-                encoder=self.number, iteration=iteration,
-                output_dir=output_dir, interactive=interactive,
+                encoder=self.number,
+                iteration=iteration,
+                output_dir=output_dir,
+                interactive=interactive,
             )
         if save_trend_plot:
             _plot_residuals_trend(
                 {self.number: self.residual_history},
                 encoder=self.number,
-                output_dir=output_dir, interactive=interactive,
+                output_dir=output_dir,
+                interactive=interactive,
             )
 
         # -- Convergence check / apply corrections --
@@ -294,19 +300,25 @@ class _SingleEncoderCalibration:
 
     def restore_state(self) -> None:
         """Restore drive and iC-MU config (always called, even on error)."""
-        if self.saved_ic_config is not None:
-            self.enc.set_ic_config(self.saved_ic_config)
-        # Enable all error sources so real faults are visible.
-        self.enc.enable_all_errors()
-        if self.saved_drive_config is not None:
-            self.enc.set_drive_config(self.saved_drive_config)
+        try:
+            if self.saved_ic_config is not None:
+                self.enc.set_ic_config(self.saved_ic_config)
+            self.enc.enable_all_errors()
+            if self.saved_drive_config is not None:
+                self.enc.set_drive_config(self.saved_drive_config)
+        except Exception:
+            logger.warning(
+                f"Encoder {self.number}: could not restore state (drive may be offline).",
+                exc_info=True,
+            )
 
     def export_data(self, output_dir: Path) -> None:
         """Export iteration log as JSON."""
         if self.iteration_log:
             json_path = output_dir / f"enc{self.number}_calibration_data.json"
             json_path.write_text(
-                json.dumps(self.iteration_log, indent=2), encoding="utf-8",
+                json.dumps(self.iteration_log, indent=2),
+                encoding="utf-8",
             )
             logger.info(f"Exported calibration data: {json_path}")
 
@@ -475,7 +487,7 @@ class EncoderCalibrator:
             item.raw_data_bytes = int.to_bytes(0, 1, "little")
             padding.add_item(item)
             rpdo_maps.append(padding)
-            self._padding_rpdo: RPDOMap | None = padding
+            self._padding_rpdo = padding
         else:
             self._padding_rpdo = None
 
@@ -493,10 +505,16 @@ class EncoderCalibrator:
         if self._tpdo_map is None:
             return
         self._tpdo_map.unsubscribe_to_process_data_event()
-        self._mc.capture.pdo.remove_tpdo_map(tpdo_map=self._tpdo_map)
+        try:
+            self._mc.capture.pdo.remove_tpdo_map(tpdo_map=self._tpdo_map)
+        except Exception:
+            logger.debug("Could not remove TPDO map (slave may be offline).")
         self._tpdo_map = None
         if self._padding_rpdo is not None:
-            self._mc.capture.pdo.remove_rpdo_map(rpdo_map=self._padding_rpdo)
+            try:
+                self._mc.capture.pdo.remove_rpdo_map(rpdo_map=self._padding_rpdo)
+            except Exception:
+                logger.debug("Could not remove padding RPDO map (slave may be offline).")
             self._padding_rpdo = None
 
     def _on_pdo_data(self) -> None:
@@ -616,8 +634,10 @@ class EncoderCalibrator:
 
                         for enc in pending:
                             enc.process_iteration(
-                                iteration, raw_data[enc.number],
-                                self._output_dir, self._interactive_plots,
+                                iteration,
+                                raw_data[enc.number],
+                                self._output_dir,
+                                self._interactive_plots,
                                 save_raw_plots=self._save_raw_plots,
                                 save_residual_bar_plots=self._save_residual_bar_plots,
                                 save_trend_plot=self._save_trend_plot,
@@ -635,7 +655,8 @@ class EncoderCalibrator:
                                 f" Skipping EEPROM save.",
                             )
                             results[enc.number] = CalibrationResult(
-                                success=False, iterations=enc.iteration_count,
+                                success=False,
+                                iterations=enc.iteration_count,
                             )
 
                 return results
