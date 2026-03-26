@@ -55,6 +55,23 @@ def _ensure_backend(*, interactive: bool) -> None:
         matplotlib.use("Agg", force=True)
 
 
+def warm_matplotlib_cache(*, interactive: bool = False) -> None:
+    """Force matplotlib to build its font cache before time-critical work.
+
+    The first call to ``savefig()`` triggers a full font enumeration that
+    can block the Python GIL for several seconds.  When PDO exchange is
+    active, this stall is long enough to trip the EtherCAT watchdog.
+    Calling this function **before** PDO activation eliminates that risk.
+    """
+    _ensure_backend(interactive=interactive)
+    fig, ax = plt.subplots()
+    ax.set_title("warm-up")
+    fig.savefig(Path(__file__).parent / ".mpl_warmup.png", dpi=50)
+    plt.close(fig)
+    (Path(__file__).parent / ".mpl_warmup.png").unlink(missing_ok=True)
+    logger.debug("Matplotlib font cache warmed up.")
+
+
 def _plot_raw_waveforms(
     master_raw: list[int],
     nonius_raw: list[int],

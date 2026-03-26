@@ -36,6 +36,7 @@ from .plotting import (
     _plot_raw_waveforms,
     _plot_residuals_bar,
     _plot_residuals_trend,
+    warm_matplotlib_cache,
 )
 
 logger = logging.getLogger(__name__)
@@ -610,6 +611,7 @@ class EncoderCalibrator:
             # index order used by _process_tpdo() when parsing the
             # process data buffer.
             # https://novantamotion.atlassian.net/browse/INGK-1257
+            warm_matplotlib_cache(interactive=self._interactive_plots)
             self._setup_data_tpdo()
 
             # -- Setup phase 5: FSoE (maps only, no PDO start) --
