@@ -1,7 +1,7 @@
 @Library('cicd-lib@0.20') _
 
 def SW_NODE = "windows-slave"
-def WIN_DOCKER_IMAGE = "ingeniacontainers.azurecr.io/win-python-builder:1.7"
+def WIN_DOCKER_IMAGE = "ingeniacontainers.azurecr.io/win-python-builder:1.9"
 def DEFAULT_PYTHON_VERSION = "3.12"
 
 WIN_DOCKER_TMP_PATH = "C:\\Users\\ContainerAdministrator\\ic-haus-calibration"
