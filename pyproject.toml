@@ -1,0 +1,144 @@
+[project]
+dynamic = ["version"]
+
+name = "ic-haus-magnetic-encoder-calibration"
+description = "iC-Haus Magnetic Encoder calibration library using the DLL communication with summit drives"
+authors = [
+  { name = "Novanta", email = "support@ingeniamc.com" }
+]
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "ingeniamotion>=0.9.1",
+    "matplotlib>=3.9",
+    "mu-3sl==3.4.2.1",
+    "numpy>=2.0",
+]
+
+[build-system]
+requires = [
+  "setuptools==75.6.0",
+  "setuptools_scm[toml]>=8",
+  "setuptools_scm_policies @ http://pypi.novanta.com/packages/setuptools_scm_policies-0.2.0-py3-none-any.whl"
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ic_haus_magnetic_encoder_calibration"]
+
+[tool.setuptools.package-data]
+ic_haus_magnetic_encoder_calibration = ["py.typed"]
+
+[tool.setuptools_scm]
+version_scheme = "nm_version_scheme"
+local_scheme = "nm_local_scheme"
+write_to = "ic_haus_magnetic_encoder_calibration/_version.py"
+
+[tool.poetry]
+version = "0.0.0"  # placeholder. Actual version is managed by setuptools_scm.
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
+
+[[tool.poetry.source]]
+name = "novanta"
+url = "http://pypi.novanta.com/simple"
+priority = "supplemental"
+
+# Dependencies to run poe tasks
+[tool.poetry.group.dev]
+optional = true
+[tool.poetry.group.dev.dependencies]
+poethepoet = {extras = ["poetry-plugin"], version = "^0.35.0"}
+
+# Dependencies for format task
+[tool.poetry.group.format]
+optional = true
+[tool.poetry.group.format.dependencies]
+ruff = "==0.15.2"
+
+# Dependencies for type task
+[tool.poetry.group.type]
+optional = true
+[tool.poetry.group.type.dependencies]
+mypy = "==1.19.1"
+
+# Dependencies for tests task
+[tool.poetry.group.tests]
+optional = true
+[tool.poetry.group.tests.dependencies]
+pytest = "==8.4.1"
+pytest-cov = "==7.0.0"
+pytest-mock = "==3.15.1"
+summit-testing-framework = {version = "==0.2.0.post232+develop.4b9deb4"}
+virtual-drive = {version = "==0.0.post535+mot3.5320.connection.permanently.3012679"}
+ 
+# Dependencies for build task 
+[tool.poetry.group.build]
+optional = true
+[tool.poetry.group.build.dependencies]
+pyinstaller = {version = "^6.6.0", python = ">=3.9,<3.15"}
+twine = "^5.0.0"
+
+
+# -----------------------------------------------------------------------
+#                                   TASKS
+# -----------------------------------------------------------------------
+
+# ----------------------------- Build wheel -----------------------------
+[tool.poe.tasks.build]
+help = "Build wheels"
+sequence = [
+    { cmd = "poetry build -f wheel" },
+    { cmd = "twine check dist/*.whl" }
+]
+
+# ----------------------------- Ruff format -----------------------------
+[tool.poe.tasks.ruff-format-check]
+help = "Format check with ruff"
+cmd = "ruff format --check ic_haus_magnetic_encoder_calibration tests"
+
+[tool.poe.tasks.ruff-check]
+help = "Check with ruff"
+cmd = "ruff check ic_haus_magnetic_encoder_calibration tests"
+
+[tool.poe.tasks.format]
+help     = "Check format"
+sequence = ["ruff-format-check", "ruff-check"]
+
+# ----------------------------- Ruff reformat -----------------------------
+[tool.poe.tasks.ruff-format]
+help = "Format files with ruff"
+cmd = "ruff format ic_haus_magnetic_encoder_calibration tests"
+
+[tool.poe.tasks.ruff-check-fix]
+help = "Fix lint errors"
+cmd = "ruff check --fix ic_haus_magnetic_encoder_calibration tests"
+
+[tool.poe.tasks.reformat]
+help     = "Reformat files and fix lint errors"
+sequence = ["ruff-format", "ruff-check-fix"]
+
+# ----------------------------- Mypy -----------------------------
+[tool.poe.tasks.type]
+help = "Run type checks"
+cmd = "mypy ic_haus_magnetic_encoder_calibration"
+
+# ----------------------------- Run unit tests -----------------------------
+[tool.poe.tasks.tests]
+cmd = "python -I -m pytest tests -m \"not hardware\""
+
+# ----------------------------- PyInstaller CLI build -----------------------------
+[tool.poe.tasks.pyinstaller-cli]
+help = "Build standalone CLI executable with PyInstaller"
+cmd = "pyinstaller ic_haus_magnetic_encoder_calibration.spec"
+
+# -----------------------------------------------------------------------
+#                              PYTEST CONFIG
+# -----------------------------------------------------------------------
+[tool.pytest.ini_options]
+markers = [
+    "hardware: Tests that require a physical drive (excluded from CI)",
+]
+
