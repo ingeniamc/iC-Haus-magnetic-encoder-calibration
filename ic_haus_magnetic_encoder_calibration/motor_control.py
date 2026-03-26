@@ -4,8 +4,8 @@ Provides :class:`MotorControl` which wraps ``ingeniamotion`` motor operations
 and transparently handles FSoE (Functional Safety over EtherCAT) when detected.
 
 The FSoE lifecycle is split into two phases so that callers can register
-additional PDO maps (e.g. data TPDO for encoder position) between
-``prepare_fsoe()`` and ``activate_pdos()``.
+additional PDO maps (e.g. data TPDO for encoder position) any time before
+``activate_pdos()`` is called, typically after ``prepare_fsoe()``.
 """
 
 import logging

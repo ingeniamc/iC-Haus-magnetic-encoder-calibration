@@ -47,7 +47,7 @@ python __main__.py \
 | `--interface`         | —       | EtherCAT network interface name (required)   |
 | `--dictionary`        | —       | Path to XDF dictionary file (required)       |
 | `--encoder`           | `both`  | Which encoder(s): `1`, `2`, or `both`        |
-| `--max-iterations`    | `3`     | Maximum analog calibration iterations        |
+| `--max-iterations`    | `10`     | Maximum analog calibration iterations        |
 | `--gen-frequency`     | `0.4`   | Saw-tooth generator frequency (Hz)           |
 | `--gen-current`       | `1.0`   | Quadrature current (A)                       |
 | `--pdo-rate-ms`       | `1.0`   | PDO cycle time (ms)                          |
@@ -73,7 +73,7 @@ parameters converge across iterations:
 pytest tests/ -m "not hardware"
 
 # Hardware tests (requires a connected drive)
-pytest tests/ -m hardware --setup=tests.setups.tests_setup.TESTS_SETUP
+pytest tests/ -m hardware --setup=tests.setups.tests_setup.MY_SETUP
 ```
 
 ## Project structure
