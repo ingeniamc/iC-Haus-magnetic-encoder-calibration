@@ -12,6 +12,7 @@ Each figure is saved as a PNG and, optionally, shown interactively.
 """
 
 import logging
+import tempfile
 from pathlib import Path
 
 import matplotlib
@@ -66,9 +67,10 @@ def warm_matplotlib_cache(*, interactive: bool = False) -> None:
     _ensure_backend(interactive=interactive)
     fig, ax = plt.subplots()
     ax.set_title("warm-up")
-    fig.savefig(Path(__file__).parent / ".mpl_warmup.png", dpi=50)
+    warmup_path = Path(tempfile.gettempdir()) / ".mpl_warmup.png"
+    fig.savefig(warmup_path, dpi=50)
     plt.close(fig)
-    (Path(__file__).parent / ".mpl_warmup.png").unlink(missing_ok=True)
+    warmup_path.unlink(missing_ok=True)
     logger.debug("Matplotlib font cache warmed up.")
 
 
