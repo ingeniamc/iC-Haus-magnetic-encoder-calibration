@@ -1,10 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files
+
+# mu_3sl_interface loads its native DLLs via ctypes at runtime from
+# <package>/bin/<platform>/<arch>/.  PyInstaller cannot detect these
+# automatically, so we collect them explicitly.
+mu_3sl_datas = collect_data_files('mu_3sl_interface', subdir='bin')
+
 a = Analysis(
     ['__main__.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=mu_3sl_datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
