@@ -205,6 +205,7 @@ class Encoder:
         self._mc.communication.set_register(regs.itf_ctl, BissAction.NO_ACTION, axis=ax)
         self._mc.communication.set_register(regs.itf_addr, reg.address, axis=ax)
         self._mc.communication.set_register(regs.itf_ctl, BissAction.READ, axis=ax)
+        # Let the BiSS transaction settle before reading the result register
         time.sleep(_BISS_SETTLE_S)
         raw = int(self._mc.communication.get_register(regs.itf_data, axis=ax)) & 0xFF
         logger.debug(
@@ -220,6 +221,8 @@ class Encoder:
         self._mc.communication.set_register(regs.itf_addr, reg.address, axis=ax)
         self._mc.communication.set_register(regs.itf_data, value & 0xFF, axis=ax)
         self._mc.communication.set_register(regs.itf_ctl, BissAction.WRITE, axis=ax)
+        # Let the BiSS transaction settle before any subsequent operations.
+        # They could potentially depend on the new register value, so it's safer to wait here
         time.sleep(_BISS_SETTLE_S)
 
     # -- Step 1: Revision --
@@ -560,5 +563,7 @@ class Encoder:
         fresh absolute-position calculation which clears the flag.
         """
         self._write_ic(CMD, _CMD_ABS_RESET)
+        # Let the BiSS transaction settle and the encoder recalculate absolute
+        # position before any further operations.
         time.sleep(_BISS_SETTLE_S)
         logger.info(f"Encoder {self._number}: ABS_RESET issued.")
