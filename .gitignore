@@ -17,7 +17,7 @@ _deps
 _install
 _build
 *.o
-out.txt
+*.txt
 
 # os
 .DS_Store
@@ -28,6 +28,9 @@ out.txt
 
 # Test files
 /pytest_reports/
+
+# Calibration diagnostic plots
+/calibration_output/
 /.coverage
 /coverage.xml
 
