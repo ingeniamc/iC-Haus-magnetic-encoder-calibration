@@ -1,0 +1,47 @@
+# editors
+**/*.swp
+.idea
+.vscode
+
+# python files
+**/*.pyc
+**/__pycache__
+build/
+dist*/
+*.egg*
+.ipynb_checkpoints/
+ic_haus_magnetic_encoder_calibration/_version.py
+
+# temp files
+_deps
+_install
+_build
+*.o
+*.txt
+
+# os
+.DS_Store
+
+# Pipenv and venv
+/Pipfile.lock
+/.venv*
+
+# Test files
+/pytest_reports/
+
+# Calibration diagnostic plots
+/calibration_output/
+/.coverage
+/coverage.xml
+
+# Documentation
+/_docs
+
+# Environment
+/.env
+
+# CSV output files
+*.csv
+
+# Test setups (machine-specific)
+/tests/setups/tests_setup.py
