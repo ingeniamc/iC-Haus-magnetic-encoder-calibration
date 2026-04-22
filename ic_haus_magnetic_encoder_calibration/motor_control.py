@@ -12,13 +12,10 @@ import logging
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
 
 from ingeniamotion import MotionController
 from ingeniamotion.enums import OperationMode, SensorType
-
-if TYPE_CHECKING:
-    from ingeniamotion.fsoe_master.handler import FSoEMasterHandler
+from ingeniamotion.fsoe_master.handler import FSoEMasterHandler  # noqa: TC002
 
 logger = logging.getLogger(__name__)
 
