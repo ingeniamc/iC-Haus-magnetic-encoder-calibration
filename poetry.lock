@@ -37,7 +37,7 @@ version = "3.8.0"
 description = "efficient arrays of booleans -- C extension"
 optional = false
 python-versions = "*"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "bitarray-3.8.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:f08342dc8d19214faa7ef99574dea6c37a2790d6d04a9793ef8fa76c188dc08d"},
     {file = "bitarray-3.8.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:792462abfeeca6cc8c6c1e6d27e14319682f0182f6b0ba37befe911af794db70"},
@@ -194,7 +194,7 @@ version = "2.2.0"
 description = "CANopen stack implementation"
 optional = false
 python-versions = ">=3.6"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "canopen-2.2.0-py3-none-any.whl", hash = "sha256:8dcb1c1f4a9f4182cc110c21317570b921b8bf30957b35e6970e224a5dd331ce"},
     {file = "canopen-2.2.0.tar.gz", hash = "sha256:5f18651b9df6e4769b9882e969f934ae773ef24a45aabc3334b586982048d08c"},
@@ -1013,6 +1013,24 @@ unicode = ["unicodedata2 (>=17.0.0) ; python_version <= \"3.14\""]
 woff = ["brotli (>=1.0.1) ; platform_python_implementation == \"CPython\"", "brotlicffi (>=0.8.0) ; platform_python_implementation != \"CPython\"", "zopfli (>=0.1.4)"]
 
 [[package]]
+name = "fsoe-master"
+version = "0.2.1"
+description = "FSoE Master Library"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "fsoe_master-0.2.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d7d9c97d9c6805398ded85a6adc9acde91eb4355cc006712340104e44e9a4090"},
+    {file = "fsoe_master-0.2.1-cp310-cp310-win_amd64.whl", hash = "sha256:24f290176a4763a11de45abea7c01d606dd88717cec1100eb0f2c2a3982acc24"},
+    {file = "fsoe_master-0.2.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c7c2a1b80a430d29f319ef2b012499abd7f4d6516f05c89282ebd7fb12029f86"},
+    {file = "fsoe_master-0.2.1-cp311-cp311-win_amd64.whl", hash = "sha256:724368ff950db631ca66db8fb912cc1e34c047dc0d978c3a00a0d5fbe5db4a03"},
+    {file = "fsoe_master-0.2.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9a933de618bde562b6b868e537f35ac9c2de2168333e93f9fc0145d18b3bbf02"},
+    {file = "fsoe_master-0.2.1-cp312-cp312-win_amd64.whl", hash = "sha256:cff774613524f03dfdc3842c3f307d84dae8cf615fc69d45db1971278373d1aa"},
+    {file = "fsoe_master-0.2.1-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b022871aed62743f22a88a4152ad8ded50497299c113b546c8dec4d1285edf60"},
+    {file = "fsoe_master-0.2.1-cp39-cp39-win_amd64.whl", hash = "sha256:91a30e23883d7edd15dedd1a4c2ecb18c508bc463eb8c54f0b9cd9bb012e6b6d"},
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 description = "A pure-Python, bring-your-own-I/O implementation of HTTP/1.1"
@@ -1149,7 +1167,7 @@ version = "7.6.0"
 description = "IngeniaLink Communications Library"
 optional = false
 python-versions = ">=3.9"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "ingenialink-7.6.0-cp310-cp310-win_amd64.whl", hash = "sha256:ce209406a9c437b69e27451aaabfdbf61cd8125a0cf704121d8b5fbc0ae8072e"},
     {file = "ingenialink-7.6.0-cp311-cp311-win_amd64.whl", hash = "sha256:fdffb29fd10926c832e8ab2536debbe5bcf6ab476c0afb7fa55208dde0d6b280"},
@@ -1194,6 +1212,7 @@ files = [
 
 [package.dependencies]
 exceptiongroup = ">=1.3.0,<2.0.0"
+fsoe_master = {version = "0.2.1", optional = true, markers = "extra == \"fsoe\""}
 ifaddr = "0.1.7"
 ingenialink = ">=7.6.0,<8.0.0"
 ingenialogger = ">=0.2.1"
@@ -1711,7 +1730,7 @@ version = "1.0.8"
 description = "MessagePack serializer"
 optional = false
 python-versions = ">=3.8"
-groups = ["main", "dev"]
+groups = ["main", "dev", "tests"]
 files = [
     {file = "msgpack-1.0.8-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:505fe3d03856ac7d215dbe005414bc28505d26f0c128906037e66d98c4e95868"},
     {file = "msgpack-1.0.8-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:e6b7842518a63a9f17107eb176320960ec095a8ee3b4420b5f688e24bf50c53c"},
@@ -1770,7 +1789,7 @@ files = [
     {file = "msgpack-1.0.8-cp39-cp39-win_amd64.whl", hash = "sha256:ed59dd52075f8fc91da6053b12e8c89e37aa043f8986efd89e61fae69dc1b011"},
     {file = "msgpack-1.0.8.tar.gz", hash = "sha256:95c02b0e27e706e48d0e5426d1710ca78e0f0628d6e89d5b5a5b91a5f12274f3"},
 ]
-markers = {main = "platform_system != \"Windows\""}
+markers = {main = "platform_system != \"Windows\"", tests = "platform_system != \"Windows\""}
 
 [[package]]
 name = "mu-3sl"
@@ -1794,7 +1813,7 @@ version = "1.1.2"
 description = "Pure python library to send and receive ICMPecho request (ping) to monitor IP addresses"
 optional = false
 python-versions = "*"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "multiping-1.1.2-py2-none-any.whl", hash = "sha256:916bc870ee4e4921ad9dbf997a15e046195480a775ec7c2c615f4de9a5fd3483"},
     {file = "multiping-1.1.2-py2.py3-none-any.whl", hash = "sha256:8bad44be68db553efedc46c6af51a49660b19e6731bfe53311dddfdf30397b25"},
@@ -1917,7 +1936,7 @@ version = "2.4.3"
 description = "Fundamental package for array computing in Python"
 optional = false
 python-versions = ">=3.11"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "numpy-2.4.3-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:33b3bf58ee84b172c067f56aeadc7ee9ab6de69c5e800ab5b10295d54c581adb"},
     {file = "numpy-2.4.3-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:8ba7b51e71c05aa1f9bc3641463cd82308eab40ce0d5c7e1fd4038cbf9938147"},
@@ -2184,7 +2203,7 @@ version = "5.1.5"
 description = "A pure python3 version of ICMP ping implementation using raw socket."
 optional = false
 python-versions = ">=3.5"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "ping3-5.1.5-py3-none-any.whl", hash = "sha256:9503164d054b87b01a6bd0df83a49c29e7c8427eb06940f874ebd4ed2d8ba8f6"},
     {file = "ping3-5.1.5.tar.gz", hash = "sha256:6c99bc844e0b7dbc5c9765e8b530140daf1ccd2112c99db01ab79831bd8081cd"},
@@ -2502,7 +2521,7 @@ version = "1.1.13"
 description = "Cython wrapper for the SOEM Library"
 optional = false
 python-versions = "*"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "pysoem-1.1.13-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:648db09657705b152f49b695e4870fdc6df265a3bd09657f53bc28b8a1b30835"},
     {file = "pysoem-1.1.13-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:84f1cf1391a0d5acec7408830400f4cec1c501e81afd62128e5110398e5e6c6d"},
@@ -2647,7 +2666,7 @@ version = "4.4.2"
 description = "Controller Area Network interface module for Python"
 optional = false
 python-versions = ">=3.8"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "python_can-4.4.2-py3-none-any.whl", hash = "sha256:e956d781b45563c244c1f3c8fe001e292d1857519cff663d7c184673a68879f9"},
     {file = "python_can-4.4.2.tar.gz", hash = "sha256:1c46c0935f39f7a9c3e76b03249af0580689ebf7a1844195e92f87257f009df5"},
@@ -3075,7 +3094,7 @@ version = "1.17.1"
 description = "Fundamental algorithms for scientific computing in Python"
 optional = false
 python-versions = ">=3.11"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "scipy-1.17.1-cp311-cp311-macosx_10_14_x86_64.whl", hash = "sha256:1f95b894f13729334fb990162e911c9e5dc1ab390c58aa6cbecb389c5b5e28ec"},
     {file = "scipy-1.17.1-cp311-cp311-macosx_12_0_arm64.whl", hash = "sha256:e18f12c6b0bc5a592ed23d3f7b891f68fd7f8241d69b7883769eb5d5dfb52696"},
@@ -3212,13 +3231,13 @@ files = [
 
 [[package]]
 name = "summit-testing-framework"
-version = "0.2.0.post232+develop.4b9deb4"
+version = "0.3.0"
 description = "Testing framework for Novanta drives"
 optional = false
 python-versions = ">=3.9"
 groups = ["tests"]
 files = [
-    {file = "summit_testing_framework-0.2.0.post232+develop.4b9deb4-py3-none-any.whl", hash = "sha256:99aee653fb6258f17449f91980243f5032f1d1b9517b7b2a7119c67913009cd2"},
+    {file = "summit_testing_framework-0.3.0-py3-none-any.whl", hash = "sha256:c0708c704c5e06f97bfa33fcc065c27ebc95db10c76f39feb1b97c257d8bef24"},
 ]
 
 [package.dependencies]
@@ -3227,10 +3246,11 @@ ingenialogger = ">=0.2.1"
 pytest = ">=8.4.1,<9.0.0"
 pytest-env = ">=1.1.5"
 rpyc = "6.0.0"
+virtual_drive = ">=0.1.0"
 
 [package.extras]
-ingenialink = ["ingenialink (>=7.5.2)"]
-ingeniamotion = ["ingeniamotion[fsoe] (>=0.10.1)"]
+ingenialink = ["ingenialink (>=7.6.0)"]
+ingeniamotion = ["ingeniamotion[fsoe] (>=0.10.2)"]
 
 [package.source]
 type = "legacy"
@@ -3320,7 +3340,7 @@ version = "0.1.0"
 description = "Emulates a Summit drive for development and testing purposes."
 optional = false
 python-versions = ">=3.9"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "virtual_drive-0.1.0-py3-none-any.whl", hash = "sha256:c84dda1b7808b5eeebfa7243a7d8b1607ecf9c75fd3c9b88f638bbe2e70c19fe"},
 ]
@@ -3641,4 +3661,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "4c8a3c3671ca8ecc445f50cb518def96ec257c7bd60ad2c58ffb8c9620a028a5"
+content-hash = "cf22ecdd99a883206efddb0013ca8ee7d6e73c6cddf97ea0b58dbb961e4d91a1"
