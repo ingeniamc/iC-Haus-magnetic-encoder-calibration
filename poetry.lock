@@ -1792,7 +1792,7 @@ files = [
 markers = {main = "platform_system != \"Windows\"", tests = "platform_system != \"Windows\""}
 
 [[package]]
-name = "mu-3sl"
+name = "mu_3sl"
 version = "3.4.2.1"
 description = "A mu_3sl_interface library wrapper for python"
 optional = false
@@ -1803,9 +1803,8 @@ files = [
 ]
 
 [package.source]
-type = "legacy"
-url = "http://pypi.novanta.com/simple"
-reference = "novanta"
+type = "file"
+url = "libs/mu_3sl-3.4.2.1-py3-none-any.whl"
 
 [[package]]
 name = "multiping"
@@ -3661,4 +3660,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "cf22ecdd99a883206efddb0013ca8ee7d6e73c6cddf97ea0b58dbb961e4d91a1"
+content-hash = "dd0ce78209fd6820a0bdc2ff1428632655146b33b8edc034e5aeed0a6f791fde"
