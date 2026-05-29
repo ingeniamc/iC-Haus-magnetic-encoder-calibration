@@ -17,28 +17,57 @@ encoder's EEPROM.
 - A Novanta/Ingenia drive with iC-MU encoder(s) connected via EtherCAT
 - The XDF dictionary file for your drive
 - An EtherCAT network interface (e.g. `\Device\NPF_{...}`)
+- The `mu-3sl` library
 
 ## Installation
 
-```bash
-pip install .
-```
+1. Place the `mu-3sl` library file `.whl` inside the `/libs` folder. 
 
-Or for development:
+    Check README on `/libs` folder for further information.
 
-```bash
-pip install poetry
-poetry install
-```
+2. Create the environment.
+
+    This will create the virtual environment on a `/.venv` folder and will install all the needed dependencies:
+
+    ```bash
+    pip install poetry
+    poetry install
+    ```
+
+    This step will fail if the correct mu-3sl library file has not been placed on the `/libs` folder.
 
 ## Usage
 
-```bash
-python __main__.py \
-    --interface "\Device\NPF_{YOUR-ADAPTER-GUID}" \
-    --dictionary path/to/drive.xdf \
-    --encoder both
-```
+1. Activate the environment.
+
+    ```bash
+    source .venv/Scripts/activate
+    ```
+
+2. Run the script.
+
+    These are example options:
+
+    ```bash
+    python __main__.py \
+        --interface "\Device\NPF_{YOUR-ADAPTER-GUID}" \
+        --dictionary path/to/drive.xdf \
+        --encoder both
+    ```
+
+    Adapter GUID can be obtained by running these commands on a python terminal:
+    ```python
+    from ingeniamotion import MotionController
+    mc = MotionController()
+    net_adapters = mc.communication.get_network_adapters()
+    for nice_name, ifname in net_adapters.items():
+        print(f"{nice_name}: \\\\Device\\\\NPF_{ifname}")
+        # Example output:
+        # Intel(R) Ethernet Connection (13) I219-LM: \Device\NPF_{7B84A7B7-2506-44FE-89C3-D97DA2FD2869}
+        # ...
+    ```
+
+
 
 ### Key options
 
