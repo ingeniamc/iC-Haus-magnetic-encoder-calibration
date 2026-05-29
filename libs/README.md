@@ -11,7 +11,6 @@ public PyPI.
 
 ## How to
 
-
 Place the `.whl` file in this directory before running `poetry install`.
 
 ## Notes

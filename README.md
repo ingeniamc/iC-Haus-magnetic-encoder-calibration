@@ -67,8 +67,6 @@ encoder's EEPROM.
         # ...
     ```
 
-
-
 ### Key options
 
 | Option                | Default | Description                                  |
@@ -95,7 +93,16 @@ parameters converge across iterations:
 
 ![Residuals trend example](residuals_trend_example.png)
 
-## Running tests
+
+## Running tests - dev ONLY
+
+You might first need to install additional packages:
+
+```bash
+poetry install --all-groups
+```
+
+Now run the tests:
 
 ```bash
 # Unit tests (no hardware required)
