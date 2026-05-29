@@ -38,18 +38,12 @@ encoder's EEPROM.
 
 ## Usage
 
-1. Activate the environment.
-
-    ```bash
-    source .venv/Scripts/activate
-    ```
-
-2. Run the script.
+1. Run the script from the Poetry environment:
 
     These are example options:
 
     ```bash
-    python __main__.py \
+    poetry run python __main__.py \
         --interface "\Device\NPF_{YOUR-ADAPTER-GUID}" \
         --dictionary path/to/drive.xdf \
         --encoder both
@@ -66,6 +60,18 @@ encoder's EEPROM.
         # Intel(R) Ethernet Connection (13) I219-LM: \Device\NPF_{7B84A7B7-2506-44FE-89C3-D97DA2FD2869}
         # ...
     ```
+
+2. Or you can also first activate the env and then run the code.
+
+     ```bash
+     source .venv/Scripts/activate
+     ```
+     ```bash
+     python __main__.py \
+     poetry run python __main__.py \
+         --interface "\Device\NPF_{YOUR-ADAPTER-GUID}" \
+         --dictionary path/to/drive.xdf \
+         --encoder both
 
 ### Key options
 
