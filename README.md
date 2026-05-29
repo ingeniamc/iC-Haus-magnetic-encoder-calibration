@@ -27,8 +27,7 @@ encoder's EEPROM.
 
 2. Create the environment.
 
-    This will create the virtual environment on a `/.venv` folder and will install all the needed dependencies:
-
+    This will create the virtual environment in a `.venv/` folder and will install all the needed dependencies:
     ```bash
     pip install poetry
     poetry install
