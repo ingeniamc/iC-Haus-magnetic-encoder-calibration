@@ -111,11 +111,6 @@ def parse_args() -> argparse.Namespace:
         help="Directory for diagnostic plot PNGs (default: calibration_output)",
     )
     parser.add_argument(
-        "--interactive-plots",
-        action="store_true",
-        help="Also show plots interactively (in addition to saving PNGs)",
-    )
-    parser.add_argument(
         "--save-raw-plots",
         type=_parse_bool,
         default=False,
@@ -186,7 +181,6 @@ def main() -> None:
         pdo_rate=args.pdo_rate_ms / 1000.0,
         capture_duration=args.capture_duration,
         output_dir=args.output_dir,
-        interactive_plots=args.interactive_plots,
         save_raw_plots=args.save_raw_plots,
         save_residual_bar_plots=args.save_residual_bar_plots,
         save_trend_plot=args.save_trend_plot,

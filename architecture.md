@@ -391,7 +391,6 @@ classDiagram
         -_pdo_rate: float
         -_capture_duration: float
         -_output_dir: Path
-        -_interactive_plots: bool
         -_save_raw_plots: bool
         -_save_residual_bar_plots: bool
         -_save_trend_plot: bool
