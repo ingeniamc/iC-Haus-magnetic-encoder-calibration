@@ -29,6 +29,10 @@ _build
 # Test files
 /pytest_reports/
 
+# Local wheel dependencies (README is tracked, everything else is ignored)
+/libs/*
+!/libs/README.md
+
 # Calibration diagnostic plots
 /calibration_output/
 /.coverage

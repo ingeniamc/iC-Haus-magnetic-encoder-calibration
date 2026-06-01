@@ -17,28 +17,60 @@ encoder's EEPROM.
 - A Novanta/Ingenia drive with iC-MU encoder(s) connected via EtherCAT
 - The XDF dictionary file for your drive
 - An EtherCAT network interface (e.g. `\Device\NPF_{...}`)
+- The `mu-3sl` library
 
 ## Installation
 
-```bash
-pip install .
-```
+1. Place the `mu-3sl` library file `.whl` inside the `/libs` folder. 
 
-Or for development:
+    Check README on `/libs` folder for further information.
 
-```bash
-pip install poetry
-poetry install
-```
+2. Create the environment.
+
+    This will create the virtual environment in a `.venv/` folder and will install all the needed dependencies:
+    ```bash
+    pip install poetry
+    poetry install
+    ```
+
+    This step will fail if the correct mu-3sl library file has not been placed on the `/libs` folder.
 
 ## Usage
 
-```bash
-python __main__.py \
-    --interface "\Device\NPF_{YOUR-ADAPTER-GUID}" \
-    --dictionary path/to/drive.xdf \
-    --encoder both
-```
+1. Run the script from the Poetry environment:
+
+    These are example options:
+
+    ```bash
+    poetry run python __main__.py \
+        --interface "\Device\NPF_{YOUR-ADAPTER-GUID}" \
+        --dictionary path/to/drive.xdf \
+        --encoder both
+    ```
+
+    Adapter GUID can be obtained by running these commands on a python terminal:
+    ```python
+    from ingeniamotion import MotionController
+    mc = MotionController()
+    net_adapters = mc.communication.get_network_adapters()
+    for nice_name, ifname in net_adapters.items():
+        print(f"{nice_name}: \\Device\\NPF_{ifname}")
+        # Example output:
+        # Intel(R) Ethernet Connection (18) I219-LM: \Device\NPF_{CD589A29-3B2F-4F7E-9AED-08F4861BE296}
+        # ...
+    ```
+
+2. Or you can also first activate the env and then run the code.
+
+     ```bash
+     source .venv/Scripts/activate
+     ```
+     ```bash
+     python __main__.py \
+     poetry run python __main__.py \
+         --interface "\Device\NPF_{YOUR-ADAPTER-GUID}" \
+         --dictionary path/to/drive.xdf \
+         --encoder both
 
 ### Key options
 
@@ -66,7 +98,16 @@ parameters converge across iterations:
 
 ![Residuals trend example](residuals_trend_example.png)
 
-## Running tests
+
+## Running tests - dev ONLY
+
+You might first need to install additional packages:
+
+```bash
+poetry install --all-groups
+```
+
+Now run the tests:
 
 ```bash
 # Unit tests (no hardware required)
