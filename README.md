@@ -54,9 +54,9 @@ encoder's EEPROM.
     mc = MotionController()
     net_adapters = mc.communication.get_network_adapters()
     for nice_name, ifname in net_adapters.items():
-        print(f"{nice_name}: \\\\Device\\\\NPF_{ifname}")
+        print(f"{nice_name}: \\Device\\NPF_{ifname}")
         # Example output:
-        # Intel(R) Ethernet Connection (13) I219-LM: \Device\NPF_{7B84A7B7-2506-44FE-89C3-D97DA2FD2869}
+        # Intel(R) Ethernet Connection (18) I219-LM: \Device\NPF_{CD589A29-3B2F-4F7E-9AED-08F4861BE296}
         # ...
     ```
 
