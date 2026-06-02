@@ -44,6 +44,11 @@ pipeline {
                         bat "XCOPY ${env.WORKSPACE} ${WIN_DOCKER_TMP_PATH} /s /i /y /e /h"
                     }
                 }
+                stage('Fetch local dependencies') {
+                    steps {
+                        batInDir "pip download mu-3sl==3.4.2.1 --no-deps -d libs --index-url http://pypi.novanta.com/simple --trusted-host pypi.novanta.com"
+                    }
+                }
                 stage('Create virtual environment') {
                     steps {
                         batInDir "py -${DEFAULT_PYTHON_VERSION} -m venv .venv"
