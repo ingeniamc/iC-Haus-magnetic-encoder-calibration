@@ -439,7 +439,7 @@ classDiagram
 >
 > **EncoderCalibrator**: Orchestrates calibration across N encoders. Delegates all motor and FSoE operations to an internal `MotorControl` instance, manages TPDO data acquisition, and coordinates the calibration loop. Motor runs continuously for the entire session via `motor_spinning()`; data is captured from all encoders simultaneously via EtherCAT TPDOs.
 >
-> **plotting**: Module-level diagnostic plot functions for raw waveforms, per-iteration residual bar charts, and cumulative residual trend lines. Each figure is saved as PNG and optionally shown interactively.
+> **plotting**: Module-level diagnostic plot functions for raw waveforms, per-iteration residual bar charts, and cumulative residual trend lines. Each figure is saved as PNG.
 
 ---
 
