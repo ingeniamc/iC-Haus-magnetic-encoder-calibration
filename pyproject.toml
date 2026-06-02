@@ -46,6 +46,10 @@ name = "novanta"
 url = "http://pypi.novanta.com/simple"
 priority = "supplemental"
 
+[tool.poetry.dependencies]
+# NOTE: when bumping mu-3sl version, also update [project] dependencies above and libs/README.md
+mu-3sl = {path = "libs/mu_3sl-3.4.2.1-py3-none-any.whl"}
+
 # Dependencies to run poe tasks
 [tool.poetry.group.dev]
 optional = true
