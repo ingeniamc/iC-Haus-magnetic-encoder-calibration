@@ -12,6 +12,7 @@ import logging
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
+from typing import List, Optional
 
 from ingeniamotion import MotionController
 from ingeniamotion.enums import OperationMode, SensorType
@@ -56,10 +57,10 @@ class MotorControl:
         self._axis = axis
         self._fsoe_active = False
         self._fsoe_prepared = False
-        self._handler: FSoEMasterHandler | None = None
+        self._handler: Optional[FSoEMasterHandler] = None
         self._gen_frequency = gen_frequency
         self._gen_current = gen_current
-        self._pdo_exception: Exception | None = None
+        self._pdo_exception: Optional[Exception] = None
 
     @property
     def gen_frequency(self) -> float:
@@ -139,7 +140,7 @@ class MotorControl:
         self._fsoe_prepared = True
         logger.info("FSoE prepared (maps on slave, master started, PDOs pending).")
 
-    def activate_pdos(self, *, refresh_rate: float | None = None) -> None:
+    def activate_pdos(self, *, refresh_rate: Optional[float] = None) -> None:
         """Phase 2: start the PDO exchange thread.
 
         All PDO maps (safety + data) must already be registered on the
@@ -199,7 +200,7 @@ class MotorControl:
 
     def configure_encoders(
         self,
-        encoder_sensor_types: list[SensorType],
+        encoder_sensor_types: List[SensorType],
     ) -> None:
         """Configure feedback sensors for encoders and internal generator.
 

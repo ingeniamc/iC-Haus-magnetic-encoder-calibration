@@ -1,4 +1,5 @@
 import time
+from typing import List
 
 import pytest
 from ingeniamotion.enums import SensorType
@@ -35,7 +36,7 @@ class TestStartMotor:
 
     def test_current_ramp_before_generator(self, motor, mock_mc) -> None:
         """Current must be ramped before the saw-tooth starts."""
-        call_log: list[str] = []
+        call_log: List[str] = []
         mock_mc.motion.set_current_quadrature.side_effect = lambda *_a, **_k: call_log.append(
             "current"
         )

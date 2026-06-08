@@ -14,6 +14,7 @@ Each figure is saved as a PNG and, optionally, shown interactively.
 import logging
 import tempfile
 from pathlib import Path
+from typing import Dict, List
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -75,8 +76,8 @@ def warm_matplotlib_cache(*, interactive: bool = False) -> None:
 
 
 def _plot_raw_waveforms(
-    master_raw: list[int],
-    nonius_raw: list[int],
+    master_raw: List[int],
+    nonius_raw: List[int],
     *,
     encoder: int,
     iteration: int,
@@ -115,7 +116,7 @@ def _plot_raw_waveforms(
 
 
 def _plot_residuals_bar(
-    residuals: list[float],
+    residuals: List[float],
     *,
     encoder: int,
     iteration: int,
@@ -157,7 +158,7 @@ def _plot_residuals_bar(
 
 
 def _plot_residuals_trend(
-    history: dict[int, list[list[float]]],
+    history: Dict[int, List[List[float]]],
     *,
     encoder: int,
     output_dir: Path,

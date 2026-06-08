@@ -17,6 +17,7 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
+from typing import Deque, Dict, List, Optional
 
 import mu_3sl_interface as mu_3sl
 from ingenialink.pdo import RPDOMap, RPDOMapItem, TPDOMap
@@ -48,7 +49,7 @@ DEFAULT_PDO_RATE_S = 0.001  # 1 ms
 
 def _extract_residuals(
     analyze_result: mu_3sl.AnalyzeResult,
-) -> list[float]:
+) -> List[float]:
     """Return the 8 residual values as a flat list.
 
     Returns:
@@ -77,15 +78,15 @@ class _SingleEncoderCalibration:
 
     def __init__(self, enc: Encoder) -> None:
         self.enc = enc
-        self._cal: mu_3sl.Calibration | None = None
+        self._cal: Optional[mu_3sl.Calibration] = None
         self.n_master_periods: int = 0
-        self.saved_drive_config: DriveFrameConfig | None = None
-        self.saved_ic_config: ICMURegisterState | None = None
+        self.saved_drive_config: Optional[DriveFrameConfig] = None
+        self.saved_ic_config: Optional[ICMURegisterState] = None
         self.converged: bool = False
         self.iteration_count: int = 0
-        self.residual_history: list[list[float]] = []
-        self.iteration_log: list[dict[str, object]] = []
-        self.last_analyze_result: mu_3sl.AnalyzeResult | None = None
+        self.residual_history: List[List[float]] = []
+        self.iteration_log: List[Dict[str, object]] = []
+        self.last_analyze_result: Optional[mu_3sl.AnalyzeResult] = None
 
     @property
     def number(self) -> int:
@@ -160,7 +161,7 @@ class _SingleEncoderCalibration:
     def process_iteration(
         self,
         iteration: int,
-        raw_data: list[int],
+        raw_data: List[int],
         output_dir: Path,
         interactive: bool,
         *,
@@ -183,8 +184,8 @@ class _SingleEncoderCalibration:
             return
 
         # Unpack packed register values into master / nonius tracks.
-        master_raw: list[int] = []
-        nonius_raw: list[int] = []
+        master_raw: List[int] = []
+        nonius_raw: List[int] = []
         for val in raw_data:
             m, n = split_raw_payload(val)
             master_raw.append(m)
@@ -398,7 +399,7 @@ class EncoderCalibrator:
         gen_current: float = DEFAULT_GEN_CURRENT,
         pdo_rate: float = DEFAULT_PDO_RATE_S,
         capture_duration: float = DEFAULT_CAPTURE_DURATION_S,
-        output_dir: Path | None = None,
+        output_dir: Optional[Path] = None,
         interactive_plots: bool = False,
         save_raw_plots: bool = False,
         save_residual_bar_plots: bool = False,
@@ -413,7 +414,7 @@ class EncoderCalibrator:
         self._motor = MotorControl(
             mc, axis=axis, gen_frequency=gen_frequency, gen_current=gen_current
         )
-        self._encoders: list[Encoder] = []
+        self._encoders: List[Encoder] = []
         self._output_dir = output_dir or Path("calibration_output")
         self._interactive_plots = interactive_plots
         self._save_raw_plots = save_raw_plots
@@ -421,9 +422,9 @@ class EncoderCalibrator:
         self._save_trend_plot = save_trend_plot
         self._save_json = save_json
         # PDO state
-        self._tpdo_map: TPDOMap | None = None
-        self._padding_rpdo: RPDOMap | None = None
-        self._pdo_buffer: deque[list[int]] = deque()
+        self._tpdo_map: Optional[TPDOMap] = None
+        self._padding_rpdo: Optional[RPDOMap] = None
+        self._pdo_buffer: Deque[List[int]] = deque()
         self._pdo_lock = threading.Lock()
         self._pdo_collecting = False
 
@@ -446,7 +447,7 @@ class EncoderCalibrator:
         return enc
 
     @property
-    def encoders(self) -> list[Encoder]:
+    def encoders(self) -> List[Encoder]:
         """Return the list of enrolled encoders."""
         return list(self._encoders)
 
@@ -481,7 +482,7 @@ class EncoderCalibrator:
             tpdo_map.add_item(item)
 
         # Non-FSoE drives need at least one RPDO for SafeOp transition.
-        rpdo_maps: list[RPDOMap] = []
+        rpdo_maps: List[RPDOMap] = []
         if not self._motor.has_fsoe:
             padding = RPDOMap()
             item = RPDOMapItem(size_bits=8)
@@ -526,7 +527,7 @@ class EncoderCalibrator:
         with self._pdo_lock:
             self._pdo_buffer.append(values)
 
-    def _acquire_raw_data(self) -> dict[int, list[int]]:
+    def _acquire_raw_data(self) -> Dict[int, List[int]]:
         """Capture raw register data from all enrolled encoders.
 
         Enables PDO sample collection for the configured capture
@@ -552,7 +553,7 @@ class EncoderCalibrator:
             self._pdo_buffer.clear()
 
         # Transpose row-major PDO data into per-encoder columns.
-        result: dict[int, list[int]] = {}
+        result: Dict[int, List[int]] = {}
         for idx, enc in enumerate(self._encoders):
             values = [row[idx] for row in samples if idx < len(row)]
             result[enc.number] = values
@@ -562,7 +563,7 @@ class EncoderCalibrator:
 
     # -- Calibration orchestration --
 
-    def calibrate(self) -> dict[int, CalibrationResult]:
+    def calibrate(self) -> Dict[int, CalibrationResult]:
         """Run the full calibration procedure for all enrolled encoders.
 
         Lifecycle:
@@ -646,7 +647,7 @@ class EncoderCalibrator:
                             )
 
                     # -- Finalize converged encoders --
-                    results: dict[int, CalibrationResult] = {}
+                    results: Dict[int, CalibrationResult] = {}
                     for enc in encoders:
                         if enc.converged:
                             results[enc.number] = enc.finalize()

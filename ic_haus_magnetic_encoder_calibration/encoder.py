@@ -13,6 +13,7 @@ a BiSS channel on a Novanta/Ingenia drive. It handles:
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
 
 import mu_3sl_interface as mu_3sl
 from ingeniamotion import MotionController
@@ -76,7 +77,7 @@ _MASTER_MASK = (1 << _MASTER_WIDTH) - 1
 _NONIUS_MASK = (1 << _NONIUS_WIDTH) - 1
 
 
-def split_raw_payload(payload: int) -> tuple[int, int]:
+def split_raw_payload(payload: int) -> Tuple[int, int]:
     """Extract 14-bit master and nonius from a packed BiSS payload.
 
     Returns:
@@ -99,7 +100,7 @@ _CMD_WRITE_ALL = 0x01
 _CMD_ABS_RESET = 0x03
 
 # Mapping from drive feedback sensor type to physical encoder channel.
-_SENSOR_TYPE_TO_ENCODER: dict[SensorType, int] = {
+_SENSOR_TYPE_TO_ENCODER: Dict[SensorType, int] = {
     SensorType.ABS1: 1,
     SensorType.SSI2: 2,
 }
@@ -135,10 +136,10 @@ class CalibrationResult:
 
     success: bool = True
     iterations: int = 0
-    master_adjustments: mu_3sl.AnalogTrackAdjustments | None = None
-    nonius_adjustments: mu_3sl.AnalogTrackAdjustments | None = None
+    master_adjustments: Optional[mu_3sl.AnalogTrackAdjustments] = None
+    nonius_adjustments: Optional[mu_3sl.AnalogTrackAdjustments] = None
     spo_base: int = 0
-    spo_n: list[int] = field(default_factory=list)
+    spo_n: List[int] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -436,7 +437,7 @@ class Encoder:
 
     def read_analog_adjustments(
         self,
-    ) -> tuple[mu_3sl.AnalogTrackAdjustments, mu_3sl.AnalogTrackAdjustments]:
+    ) -> Tuple[mu_3sl.AnalogTrackAdjustments, mu_3sl.AnalogTrackAdjustments]:
         """Read current analog calibration parameters from chip.
 
         Returns:
