@@ -7,7 +7,6 @@ that drives the BiSS bidirectional interface.
 
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Dict, List, Tuple
 
 # ---------------------------------------------------------------------------
 # BiSS bidirectional CTL actions
@@ -98,7 +97,7 @@ class ICHausRegister:
     def __init__(self, *, address: int, name: str = "", **fields: ICHausRegisterField) -> None:
         self.address: int = address
         self.name: str = name
-        self._fields: Dict[str, ICHausRegisterField] = fields
+        self._fields: dict[str, ICHausRegisterField] = fields
 
     # -- Field access --
 
@@ -117,7 +116,7 @@ class ICHausRegister:
         return self._fields[field_name]
 
     @property
-    def field_names(self) -> Tuple[str, ...]:
+    def field_names(self) -> tuple[str, ...]:
         """Return the names of all declared fields."""
         return tuple(self._fields)
 
@@ -174,7 +173,7 @@ TEST = ICHausRegister(address=0x18, name="Test mode")
 # The iC-MU packs two 4-bit SPO values per 8-bit register:
 #   low nibble [3:0] = odd-indexed offset, high nibble [7:4] = even-indexed offset.
 # Register 0x52 is special: low = SPO_BASE, high = SPO_0.
-SPO_REGISTERS: List[ICHausRegister] = [
+SPO_REGISTERS: list[ICHausRegister] = [
     ICHausRegister(
         address=0x52,
         name="SPO base / offset 0",

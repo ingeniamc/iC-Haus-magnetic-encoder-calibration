@@ -12,7 +12,7 @@ import logging
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import List, Optional
+from typing import Optional
 
 from ingeniamotion import MotionController
 from ingeniamotion.enums import OperationMode, SensorType
@@ -200,7 +200,7 @@ class MotorControl:
 
     def configure_encoders(
         self,
-        encoder_sensor_types: List[SensorType],
+        encoder_sensor_types: list[SensorType],
     ) -> None:
         """Configure feedback sensors for encoders and internal generator.
 
