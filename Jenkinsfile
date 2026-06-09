@@ -8,7 +8,7 @@ def WIN_DOCKER_IMAGE = "ingeniacontainers.azurecr.io/win-python-builder:1.9"
 def ALL_PYTHON_VERSIONS = ["3.9", "3.10", "3.11", "3.12"] as Set
 def PYTHON_VERSION_MIN = "3.9"
 def PYTHON_VERSION_MAX = "3.12"
-def DEFAULT_PYTHON_VERSION = "3.12"
+def DEFAULT_PYTHON_VERSION = PYTHON_VERSION_MIN
 
 VEnvManager venvManager = new VEnvManager(
     pipeline: this,
