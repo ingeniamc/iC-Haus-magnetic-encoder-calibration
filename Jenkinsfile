@@ -128,10 +128,10 @@ pipeline {
                 stage('Archive') {
                     steps {
                         script {
-                            venvManager.copyFromWorkingFolder("dist\\")
+                            venvManager.copyFromWorkingFolder("dist/")
                         }
-                        stash includes: 'dist\\*', name: 'build'
-                        archiveArtifacts artifacts: "dist\\*"
+                        stash includes: 'dist/**', name: 'build'
+                        archiveArtifacts artifacts: "dist/**"
                     }
                 }
             }
