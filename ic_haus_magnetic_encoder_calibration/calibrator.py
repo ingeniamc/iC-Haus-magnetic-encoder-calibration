@@ -111,9 +111,14 @@ class _SingleEncoderCalibration:
 
     # -- Setup phases --
 
-    def save_state(self) -> None:
-        """Phase 1: ensure normal mode, read revision, save configs."""
-        self.enc.ensure_normal_mode()
+    def save_state(self, enac_enabled: bool = False) -> None:
+        """Phase 1: ensure normal mode, read revision, save configs.
+
+        Args:
+            enac_enabled: Whether to set ENAC (amplitude control) to enabled.
+
+        """
+        self.enc.ensure_normal_mode(enac_enabled)
         revision = self.enc.read_revision()
         self.saved_drive_config = self.enc.get_drive_config()
         self.saved_ic_config = self.enc.get_ic_config()
@@ -386,6 +391,13 @@ class EncoderCalibrator:
         gen_current: Quadrature current target in amps.
         pdo_rate: PDO cycle time in seconds.
         capture_duration: Data capture duration per iteration in seconds.
+        force_enac: If True, forces ENAC after calibration, even if it fails.
+        output_dir: Directory for diagnostic plot PNGs.
+        interactive_plots: If True, show plots interactively instead of saving.
+        save_raw_plots: If True, save raw waveform plots for each iteration.
+        save_residual_bar_plots: If True, save residual bar plots for each iteration.
+        save_trend_plot: If True, save residuals trend plot (one per encoder).
+        save_json: If True, save iteration logs as JSON files.
     """
 
     def __init__(
@@ -398,6 +410,7 @@ class EncoderCalibrator:
         gen_current: float = DEFAULT_GEN_CURRENT,
         pdo_rate: float = DEFAULT_PDO_RATE_S,
         capture_duration: float = DEFAULT_CAPTURE_DURATION_S,
+        force_enac: bool = True,
         output_dir: Path | None = None,
         interactive_plots: bool = False,
         save_raw_plots: bool = False,
@@ -426,6 +439,7 @@ class EncoderCalibrator:
         self._pdo_buffer: deque[list[int]] = deque()
         self._pdo_lock = threading.Lock()
         self._pdo_collecting = False
+        self._force_enac = force_enac
 
     # -- Encoder management --
 
@@ -590,7 +604,7 @@ class EncoderCalibrator:
         try:
             # -- Setup phase 1: save state --
             for enc in encoders:
-                enc.save_state()
+                enc.save_state(self._force_enac)
 
             # -- Setup phase 2: calibration mode --
             for enc in encoders:
