@@ -313,23 +313,33 @@ class Encoder:
 
     # -- Calibration mode --
 
-    def ensure_normal_mode(self) -> bool:
+    def ensure_normal_mode(self, enac_enabled: bool = True) -> bool:
         """Check if the encoder is in normal ABS mode and fix it if not.
 
         A previous interrupted calibration may leave the iC-MU in RAW
         mode with an enlarged output, causing the drive to receive
         frames that don't match its expected frame size.
 
+        Args:
+            enac_enabled: Whether to set ENAC (amplitude control) to enabled.
+
         Returns:
             True if the encoder was already in normal mode, False if a
             fix was applied.
         """
+        # Disable analog calibration enable bit
+        enac_raw = self._read_ic(ENAC)
+        enac_raw = ENAC.field("enac").insert(enac_raw, int(enac_enabled))
+        self._write_ic(ENAC, enac_raw)
+
+        # Check OUT_MSB and MODE_ST for normal mode
         out_msb = OUT_MSB_ZERO.field("out_msb").extract(self._read_ic(OUT_MSB_ZERO))
         mode_st = OUT_LSB_ST.field("mode_st").extract(self._read_ic(OUT_LSB_ST))
         normal_out_msb = 0x06
         normal_mode_st = 0x00  # ABS
 
         if out_msb == normal_out_msb and mode_st == normal_mode_st:
+            # Encoder is already in normal mode
             return True
 
         logger.warning(
@@ -347,10 +357,6 @@ class Encoder:
         msb_raw = OUT_MSB_ZERO.field("out_msb").insert(msb_raw, normal_out_msb)
         self._write_ic(OUT_MSB_ZERO, msb_raw)
 
-        # Disable analog calibration enable bit
-        enac_raw = self._read_ic(ENAC)
-        enac_raw = ENAC.field("enac").insert(enac_raw, 0)
-        self._write_ic(ENAC, enac_raw)
         # Suppress all errors during recovery
         self._write_ic(CFGEW, _CALIB_CFGEW_SUPPRESS)
         return False
