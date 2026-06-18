@@ -56,6 +56,73 @@ class TestReadRevision:
             encoder.read_revision()
 
 
+class TestEnsureNormalMode:
+    """Tests for ensure_normal_mode with enac_enabled parameter."""
+
+    def test_already_normal_mode_returns_true(self, encoder, mock_mc) -> None:
+        """When encoder is already in normal mode, returns True."""
+        mock_mc.communication.get_register.side_effect = [
+            0x00,  # ENAC read
+            0x06,  # OUT_MSB_ZERO (out_msb bits[0:4] = 0x06)
+            0x00,  # OUT_LSB_ST (mode_st bits[4:5] = 0x00)
+        ]
+
+        result = encoder.ensure_normal_mode(enac_enabled=True)
+
+        assert result is True
+
+    def test_writes_enac_enabled_true(self, encoder, mock_mc) -> None:
+        """When enac_enabled=True, writes ENAC bit 7 = 1."""
+        mock_mc.communication.get_register.side_effect = [
+            0x00,  # ENAC read (starts as 0)
+            0x06,  # OUT_MSB_ZERO (out_msb=0x06)
+            0x00,  # OUT_LSB_ST (mode_st=0x00)
+        ]
+
+        encoder.ensure_normal_mode(enac_enabled=True)
+
+        # The ENAC write should set bit 7
+        data_writes = [
+            c.args[1]
+            for c in mock_mc.communication.set_register.call_args_list
+            if c.args[0] == ENCODER_1_REGS.itf_data
+        ]
+        # First data write is the ENAC value (bit 7 set = 0x80)
+        assert data_writes[0] == 0x80
+
+    def test_writes_enac_enabled_false(self, encoder, mock_mc) -> None:
+        """When enac_enabled=False, writes ENAC bit 7 = 0."""
+        mock_mc.communication.get_register.side_effect = [
+            0x80,  # ENAC read (starts with bit 7 set)
+            0x06,  # OUT_MSB_ZERO (out_msb=0x06)
+            0x00,  # OUT_LSB_ST (mode_st=0x00)
+        ]
+
+        encoder.ensure_normal_mode(enac_enabled=False)
+
+        # The ENAC write should clear bit 7
+        data_writes = [
+            c.args[1]
+            for c in mock_mc.communication.set_register.call_args_list
+            if c.args[0] == ENCODER_1_REGS.itf_data
+        ]
+        assert data_writes[0] == 0x00
+
+    def test_not_normal_mode_returns_false(self, encoder, mock_mc) -> None:
+        """When encoder is in RAW mode, restores and returns False."""
+        mock_mc.communication.get_register.side_effect = [
+            0x00,  # ENAC read
+            0x0E,  # OUT_MSB_ZERO (out_msb=0x0E != 0x06)
+            0x20,  # OUT_LSB_ST (mode_st=0x02 != 0x00)
+            0x20,  # OUT_LSB_ST read for restore
+            0x0E,  # OUT_MSB_ZERO read for restore
+        ]
+
+        result = encoder.ensure_normal_mode(enac_enabled=True)
+
+        assert result is False
+
+
 class TestConfigureInCalibrationMode:
     def test_mpc_0x0c_reduced_to_0x0b(self, encoder, mock_mc) -> None:
         """MPC=0x0C is a special case that must be reduced to 0x0B."""

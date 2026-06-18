@@ -401,6 +401,51 @@ class TestCalibrateBothEncoders:
         assert results[2].success is False
 
 
+class TestForceEnac:
+    """Tests for the force_enac parameter in EncoderCalibrator."""
+
+    def test_force_enac_true_passes_to_save_state(
+        self, mock_mc, mocker, mu_3sl_mock, tmp_path
+    ) -> None:
+        """When force_enac=True, save_state is called with enac_enabled=True."""
+        cal = EncoderCalibrator(
+            mock_mc, axis=1, max_iterations=3, force_enac=True, output_dir=tmp_path
+        )
+        enc = cal.add_encoder(SensorType.ABS1)
+        _patch_encoder(enc, mocker)
+
+        conv = _make_converged_analyze_result(mocker)
+        conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
+        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv])
+
+        cal.calibrate()
+
+        enc.ensure_normal_mode.assert_called_with(True)
+
+    def test_force_enac_false_passes_to_save_state(
+        self, mock_mc, mocker, mu_3sl_mock, tmp_path
+    ) -> None:
+        """When force_enac=False, save_state is called with enac_enabled=False."""
+        cal = EncoderCalibrator(
+            mock_mc, axis=1, max_iterations=3, force_enac=False, output_dir=tmp_path
+        )
+        enc = cal.add_encoder(SensorType.ABS1)
+        _patch_encoder(enc, mocker)
+
+        conv = _make_converged_analyze_result(mocker)
+        conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
+        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv])
+
+        cal.calibrate()
+
+        enc.ensure_normal_mode.assert_called_with(False)
+
+    def test_force_enac_defaults_to_true(self, mock_mc, tmp_path) -> None:
+        """The default value of force_enac is True."""
+        cal = EncoderCalibrator(mock_mc, axis=1, output_dir=tmp_path)
+        assert cal._force_enac is True
+
+
 class TestCalibrateRestore:
     """Config is always restored: on success, non-convergence, and exception."""
 
