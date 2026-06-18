@@ -5,7 +5,7 @@ import python.VEnvManager
 def SW_NODE = "windows-slave"
 def WIN_DOCKER_IMAGE = "ingeniacontainers.azurecr.io/win-python-builder:1.9"
 
-def ALL_PYTHON_VERSIONS = ["3.9", "3.10", "3.11", "3.12"] as Set
+def ALL_PYTHON_VERSIONS = ["3.9", "3.12"] as Set
 def PYTHON_VERSION_MIN = "3.9"
 def PYTHON_VERSION_MAX = "3.12"
 def DEFAULT_PYTHON_VERSION = PYTHON_VERSION_MIN
@@ -21,8 +21,8 @@ pipeline {
     parameters {
         choice(
             name: 'PYTHON_VERSIONS',
-            choices: ['MIN_MAX', 'MIN', 'MAX'],
-            description: 'Python version(s) to run tests with. MIN=3.9, MAX=3.12, MIN_MAX=both.'
+            choices: ['MIN_MAX', 'MIN', 'MAX', 'ALL'],
+            description: 'Python version(s) to run tests with. MIN=3.9, MAX=3.12, MIN_MAX=both 3.9 and 3.12.'
         )
     }
     options {
@@ -55,7 +55,7 @@ pipeline {
                 stage('Fetch local dependencies') {
                     steps {
                         script {
-                            venvManager.runInWorkingFolder("pip download mu-3sl==3.4.2.1 --no-deps -d libs --index-url http://pypi.novanta.com/simple --trusted-host pypi.novanta.com")
+                            venvManager.runInWorkingFolder("pip download mu-3sl==3.4.2.1 --no-deps -d libs --index-url https://pypi.novanta.com/simple")
                         }
                     }
                 }
