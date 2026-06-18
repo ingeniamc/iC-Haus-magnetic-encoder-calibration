@@ -17,6 +17,7 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
+from typing import Optional
 
 import mu_3sl_interface as mu_3sl
 from ingenialink.pdo import RPDOMap, RPDOMapItem, TPDOMap
@@ -77,15 +78,15 @@ class _SingleEncoderCalibration:
 
     def __init__(self, enc: Encoder) -> None:
         self.enc = enc
-        self._cal: mu_3sl.Calibration | None = None
+        self._cal: Optional[mu_3sl.Calibration] = None
         self.n_master_periods: int = 0
-        self.saved_drive_config: DriveFrameConfig | None = None
-        self.saved_ic_config: ICMURegisterState | None = None
+        self.saved_drive_config: Optional[DriveFrameConfig] = None
+        self.saved_ic_config: Optional[ICMURegisterState] = None
         self.converged: bool = False
         self.iteration_count: int = 0
         self.residual_history: list[list[float]] = []
         self.iteration_log: list[dict[str, object]] = []
-        self.last_analyze_result: mu_3sl.AnalyzeResult | None = None
+        self.last_analyze_result: Optional[mu_3sl.AnalyzeResult] = None
 
     @property
     def number(self) -> int:
@@ -411,7 +412,7 @@ class EncoderCalibrator:
         pdo_rate: float = DEFAULT_PDO_RATE_S,
         capture_duration: float = DEFAULT_CAPTURE_DURATION_S,
         force_enac: bool = True,
-        output_dir: Path | None = None,
+        output_dir: Optional[Path] = None,
         interactive_plots: bool = False,
         save_raw_plots: bool = False,
         save_residual_bar_plots: bool = False,
@@ -434,8 +435,8 @@ class EncoderCalibrator:
         self._save_trend_plot = save_trend_plot
         self._save_json = save_json
         # PDO state
-        self._tpdo_map: TPDOMap | None = None
-        self._padding_rpdo: RPDOMap | None = None
+        self._tpdo_map: Optional[TPDOMap] = None
+        self._padding_rpdo: Optional[RPDOMap] = None
         self._pdo_buffer: deque[list[int]] = deque()
         self._pdo_lock = threading.Lock()
         self._pdo_collecting = False

@@ -1,27 +1,30 @@
-@Library('cicd-lib@0.20') _
+@Library('cicd-lib@0.21') _
+
+import python.VEnvManager
 
 def SW_NODE = "windows-slave"
 def WIN_DOCKER_IMAGE = "ingeniacontainers.azurecr.io/win-python-builder:1.9"
-def DEFAULT_PYTHON_VERSION = "3.12"
 
-WIN_DOCKER_TMP_PATH = "C:\\Users\\ContainerAdministrator\\ic-haus-calibration"
+def ALL_PYTHON_VERSIONS = ["3.9", "3.12"] as Set
+def PYTHON_VERSION_MIN = "3.9"
+def PYTHON_VERSION_MAX = "3.12"
+def DEFAULT_PYTHON_VERSION = PYTHON_VERSION_MIN
 
-/**
- * Helper to run a command in the WIN_DOCKER_TMP_PATH directory.
- */
-def batInDir(cmd) {
-    bat "cd ${WIN_DOCKER_TMP_PATH}\n${cmd}"
-}
-
-/**
- * Helper to run a command in the WIN_DOCKER_TMP_PATH directory with the virtual environment activated.
- */
-def batInVenv(cmd) {
-    batInDir "call .venv\\Scripts\\activate\n${cmd}"
-}
+VEnvManager venvManager = new VEnvManager(
+    pipeline: this,
+    default_python_version: DEFAULT_PYTHON_VERSION,
+    poetry_default_install_command: "poetry sync --no-root --all-groups"
+)
 
 pipeline {
     agent none
+    parameters {
+        choice(
+            name: 'PYTHON_VERSIONS',
+            choices: ['MIN_MAX', 'MIN', 'MAX'],
+            description: 'Python version(s) to run tests with. MIN=3.9, MAX=3.12, MIN_MAX=both 3.9 and 3.12.'
+        )
+    }
     options {
         timestamps()
     }
@@ -33,6 +36,9 @@ pipeline {
                     image WIN_DOCKER_IMAGE
                 }
             }
+            environment {
+                VENV_WORKING_FOLDER = "C:\\Users\\ContainerAdministrator\\ic-haus-calibration"
+            }
             stages {
                 stage('Clean workspace') {
                     steps {
@@ -41,51 +47,91 @@ pipeline {
                 }
                 stage('Move workspace') {
                     steps {
-                        bat "XCOPY ${env.WORKSPACE} ${WIN_DOCKER_TMP_PATH} /s /i /y /e /h"
+                        script {
+                            venvManager.copyToWorkingFolder()
+                        }
                     }
                 }
                 stage('Fetch local dependencies') {
                     steps {
-                        batInDir "pip download mu-3sl==3.4.2.1 --no-deps -d libs --index-url http://pypi.novanta.com/simple --trusted-host pypi.novanta.com"
+                        script {
+                            venvManager.runInWorkingFolder("pip download mu-3sl==3.4.2.1 --no-deps -d libs --index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com")
+                        }
                     }
                 }
-                stage('Create virtual environment') {
+                stage('Create virtual environments') {
                     steps {
-                        batInDir "py -${DEFAULT_PYTHON_VERSION} -m venv .venv"
-                        batInVenv "poetry sync --no-root --all-groups"
+                        script {
+                            // Determine which Python versions to use for tests
+                            Set pythonVersions
+                            if (params.PYTHON_VERSIONS == "MIN_MAX") {
+                                pythonVersions = [PYTHON_VERSION_MIN, PYTHON_VERSION_MAX] as Set
+                            } else if (params.PYTHON_VERSIONS == "MIN") {
+                                pythonVersions = [PYTHON_VERSION_MIN] as Set
+                            } else if (params.PYTHON_VERSIONS == "MAX") {
+                                pythonVersions = [PYTHON_VERSION_MAX] as Set
+                            } else {
+                                pythonVersions = ALL_PYTHON_VERSIONS
+                            }
+                            venvManager.createPoetryEnvironments(
+                                pythonVersions: pythonVersions
+                            )
+                        }
                     }
                 }
-                stage('Build wheel') {
+                stage('Build wheels') {
                     steps {
-                        batInVenv "poetry run poe build"
+                        script {
+                            venvManager.forEachEnvironment() { venv ->
+                                venv.run("poetry run poe build")
+                            }
+                        }
                     }
                 }
                 stage('Check formatting') {
                     steps {
-                        batInVenv "poetry run poe format"
+                        script {
+                            venvManager.withPython(DEFAULT_PYTHON_VERSION) { venv ->
+                                venv.run("poetry run poe format")
+                            }
+                        }
                     }
                 }
                 stage('Type checking') {
                     steps {
-                        batInVenv "poetry run poe type"
+                        script {
+                            venvManager.withPython(DEFAULT_PYTHON_VERSION) { venv ->
+                                venv.run("poetry run poe type")
+                            }
+                        }
                     }
                 }
                 stage('Build CLI executable') {
                     steps {
-                        batInVenv "poetry run poe pyinstaller-cli"
-                        batInDir "dist\\ic_haus_magnetic_encoder_calibration.exe --help"
+                        script {
+                            venvManager.withPython(DEFAULT_PYTHON_VERSION) { venv ->
+                                venv.run("poetry run poe pyinstaller-cli")
+                            }
+                            venvManager.runInWorkingFolder("dist\\ic_haus_magnetic_encoder_calibration.exe --help")
+                        }
                     }
                 }
                 stage('Run tests') {
                     steps {
-                        batInVenv "poetry run poe tests"
+                        script {
+                            venvManager.forEachEnvironment() { venv ->
+                                venv.run("poetry run poe tests")
+                            }
+                        }
                     }
                 }
                 stage('Archive') {
                     steps {
-                        batInDir "XCOPY dist ${env.WORKSPACE}\\dist /s /i /y"
-                        stash includes: 'dist\\*', name: 'build'
-                        archiveArtifacts artifacts: "dist\\*"
+                        script {
+                            venvManager.copyFromWorkingFolder("dist/")
+                        }
+                        stash includes: 'dist/**', name: 'build'
+                        archiveArtifacts artifacts: "dist/**"
                     }
                 }
             }

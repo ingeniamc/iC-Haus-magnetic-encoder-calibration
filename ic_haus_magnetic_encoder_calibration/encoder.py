@@ -13,6 +13,7 @@ a BiSS channel on a Novanta/Ingenia drive. It handles:
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import Optional
 
 import mu_3sl_interface as mu_3sl
 from ingeniamotion import MotionController
@@ -135,8 +136,8 @@ class CalibrationResult:
 
     success: bool = True
     iterations: int = 0
-    master_adjustments: mu_3sl.AnalogTrackAdjustments | None = None
-    nonius_adjustments: mu_3sl.AnalogTrackAdjustments | None = None
+    master_adjustments: Optional[mu_3sl.AnalogTrackAdjustments] = None
+    nonius_adjustments: Optional[mu_3sl.AnalogTrackAdjustments] = None
     spo_base: int = 0
     spo_n: list[int] = field(default_factory=list)
 
