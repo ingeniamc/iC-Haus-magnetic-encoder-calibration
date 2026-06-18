@@ -21,7 +21,7 @@ pipeline {
     parameters {
         choice(
             name: 'PYTHON_VERSIONS',
-            choices: ['MIN_MAX', 'MIN', 'MAX', 'ALL'],
+            choices: ['MIN_MAX', 'MIN', 'MAX'],
             description: 'Python version(s) to run tests with. MIN=3.9, MAX=3.12, MIN_MAX=both 3.9 and 3.12.'
         )
     }
