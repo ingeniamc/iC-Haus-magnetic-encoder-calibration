@@ -28,7 +28,8 @@ DEFAULT_GEN_CURRENT = 1.0  # Amps
 _GEN_CYCLES = 10_000  # generous upper bound; calibration finishes well before exhaustion
 _GEN_DIRECTION = 1  # saw-tooth direction (positive = forward)
 _RAMP_STEPS = 10  # number of current ramp steps
-_RAMP_INTERVAL = 0.2  # seconds between ramp steps
+_CURRENT_RAMP_INTERVAL = 0.2  # seconds between current ramp steps
+_FREQUENCY_RAMP_INTERVAL = 0.8  # seconds between frequency ramp steps
 _PDO_WATCHDOG_TIMEOUT = 6.0  # seconds — generous to tolerate GIL blocking (matplotlib, etc.)
 
 
@@ -236,22 +237,34 @@ class MotorControl:
         self._mc.motion.motor_enable(axis=self._axis)
 
         # Ramp current to full amplitude at a static angle.
-        step = self._gen_current / _RAMP_STEPS
+        current_step = self._gen_current / _RAMP_STEPS
         for i in range(1, _RAMP_STEPS + 1):
             self._mc.motion.set_current_quadrature(
-                current=step * i,
+                current=current_step * i,
                 axis=self._axis,
             )
-            time.sleep(_RAMP_INTERVAL)
+            time.sleep(_CURRENT_RAMP_INTERVAL)
 
         # Start the saw-tooth generator after the rotor is locked.
-        self._mc.motion.internal_generator_saw_tooth_move(
-            direction=_GEN_DIRECTION,
-            cycles=_GEN_CYCLES,
-            frequency=self._gen_frequency,
-            axis=self._axis,
-        )
-        logger.info("Motor started.")
+        # Do it progressively to avoid a large current spike at the start.
+        freq_step = 0.5 if self._gen_frequency > 0.5 else self._gen_frequency
+        ramp_steps = int(self._gen_frequency / freq_step) if self._gen_frequency > freq_step else 1
+        for i in range(1, ramp_steps + 1):
+            if i == 1:
+                # First step: start the generator at a low frequency
+                self._mc.motion.internal_generator_saw_tooth_move(
+                    direction=_GEN_DIRECTION,
+                    cycles=0,
+                    frequency=freq_step,
+                    axis=self._axis,
+                )
+            else:
+                self._mc.communication.set_register(
+                    self._mc.motion.GENERATOR_FREQUENCY_REGISTER,
+                    freq_step * i,
+                    axis=self._axis,
+                )
+            time.sleep(_FREQUENCY_RAMP_INTERVAL)
 
     def _stop_motor(self) -> None:
         """Disable the motor."""
