@@ -24,13 +24,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_GEN_FREQ = 0.4  # Hz - saw-tooth frequency for internal generator
 DEFAULT_GEN_CURRENT = 1.0  # Amps
 
-
+# Current and frequency ramping parameters
 _GEN_CYCLES = 10_000  # generous upper bound; calibration finishes well before exhaustion
 _GEN_DIRECTION = 1  # saw-tooth direction (positive = forward)
 _RAMP_STEPS = 10  # number of current ramp steps
 _CURRENT_RAMP_INTERVAL = 0.2  # seconds between current ramp steps
 _FREQUENCY_RAMP_INTERVAL = 0.8  # seconds between frequency ramp steps
 _PDO_WATCHDOG_TIMEOUT = 6.0  # seconds — generous to tolerate GIL blocking (matplotlib, etc.)
+_MIN_FREQ_STEP = 1.0  # Hz - minimum frequency step for auto-configure
 
 
 class MotorControl:
@@ -247,8 +248,10 @@ class MotorControl:
 
         # Start the saw-tooth generator after the rotor is locked.
         # Do it progressively to avoid a large current spike at the start.
-        freq_step = 0.5 if self._gen_frequency > 0.5 else self._gen_frequency
-        ramp_steps = int(self._gen_frequency / freq_step) if self._gen_frequency > freq_step else 1
+        freq_step = _MIN_FREQ_STEP if self._gen_frequency > _MIN_FREQ_STEP else self._gen_frequency
+        ramp_steps = (
+            round(self._gen_frequency / freq_step) if self._gen_frequency > freq_step else 1
+        )
         for i in range(1, ramp_steps + 1):
             if i == 1:
                 # First step: start the generator at a low frequency
@@ -259,9 +262,12 @@ class MotorControl:
                     axis=self._axis,
                 )
             else:
+                target_freq = (
+                    self._gen_frequency if i == ramp_steps else freq_step * i
+                )  # Last step: set the generator to the target frequency
                 self._mc.communication.set_register(
                     self._mc.motion.GENERATOR_FREQUENCY_REGISTER,
-                    freq_step * i,
+                    target_freq,
                     axis=self._axis,
                 )
             time.sleep(_FREQUENCY_RAMP_INTERVAL)
