@@ -32,7 +32,7 @@ _RAMP_STEPS = 10  # number of current ramp steps
 _CURRENT_RAMP_INTERVAL = 0.2  # seconds between current ramp steps
 _FREQUENCY_RAMP_INTERVAL = 0.8  # seconds between frequency ramp steps
 _PDO_WATCHDOG_TIMEOUT = 6.0  # seconds — generous to tolerate GIL blocking (matplotlib, etc.)
-_MIN_FREQ_STEP = 1.0  # Hz - minimum frequency step for auto-configure
+_MIN_FREQ_STEP = 1.0  # Hz - starting frequency for the ramp (upper bound)
 
 
 class MotorControl:
