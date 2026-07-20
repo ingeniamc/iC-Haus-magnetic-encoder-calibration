@@ -248,10 +248,8 @@ class MotorControl:
 
         # Start the saw-tooth generator after the rotor is locked.
         # Do it progressively to avoid a large current spike at the start.
-        freq_step = _MIN_FREQ_STEP if self._gen_frequency > _MIN_FREQ_STEP else self._gen_frequency
-        ramp_steps = (
-            round(self._gen_frequency / freq_step) if self._gen_frequency > freq_step else 1
-        )
+        freq_step = min(_MIN_FREQ_STEP, self._gen_frequency)
+        ramp_steps = max(1, round(self._gen_frequency / freq_step))
         for i in range(1, ramp_steps + 1):
             if i == 1:
                 # First step: start the generator at a low frequency
@@ -262,9 +260,8 @@ class MotorControl:
                     axis=self._axis,
                 )
             else:
-                target_freq = (
-                    self._gen_frequency if i == ramp_steps else freq_step * i
-                )  # Last step: set the generator to the target frequency
+                # Next steps: ramp the frequency up to the target value
+                target_freq = self._gen_frequency if i == ramp_steps else freq_step * i
                 self._mc.communication.set_register(
                     self._mc.motion.GENERATOR_FREQUENCY_REGISTER,
                     target_freq,
