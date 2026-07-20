@@ -90,14 +90,33 @@ class TestStartMotor:
         freqs = [c.args[1] for c in mock_mc.communication.set_register.call_args_list]
         assert freqs == [2.0, 3.0, 4.0, 5.0]
 
-    def test_frequency_ramp_ends_at_target(self, mock_mc) -> None:
+    @pytest.mark.parametrize(
+        "target_freq,expected_steps",
+        [
+            (0.3, []),  # no step to target
+            (0.8, []),  # no step to target
+            (1.0, []),  # no step to target
+            (1.5, [1.5]),  # one step to target
+            (2.0, [2.0]),  # one step to target
+            (3.4, [2.0, 3.0, 3.4]),  # multiple steps to target
+            (3.8, [2.0, 3.0, 3.8]),  # multiple steps to target
+            (5.0, [2.0, 3.0, 4.0, 5.0]),  # multiple steps to target
+        ],
+    )
+    def test_frequency_ramp_ends_at_target(self, mock_mc, target_freq, expected_steps) -> None:
         """The last ramp step writes exactly the configured target frequency."""
-        motor = MotorControl(mock_mc, axis=1, gen_frequency=3.5)
+        motor = MotorControl(mock_mc, axis=1, gen_frequency=target_freq)
 
         motor._start_motor()
 
         freqs = [c.args[1] for c in mock_mc.communication.set_register.call_args_list]
-        assert freqs[-1] == 3.5  # exact target, not freq_step * ramp_steps
+        if expected_steps:
+            assert freqs[-1] == expected_steps[-1]  # exact target, not freq_step * ramp_steps
+        assert freqs == expected_steps  # all steps match expected ramp sequence
+
+    def test_rejects_non_positive_frequency(self, mock_mc) -> None:
+        with pytest.raises(ValueError, match="gen_frequency must be positive"):
+            MotorControl(mock_mc, axis=1, gen_frequency=0.0)
 
 
 class TestPrepareFsoe:

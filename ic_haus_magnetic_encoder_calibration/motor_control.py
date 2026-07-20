@@ -9,6 +9,7 @@ additional PDO maps (e.g. data TPDO for encoder position) any time before
 """
 
 import logging
+import math
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -60,6 +61,8 @@ class MotorControl:
         self._fsoe_active = False
         self._fsoe_prepared = False
         self._handler: Optional[FSoEMasterHandler] = None
+        if gen_frequency <= 0:
+            raise ValueError(f"gen_frequency must be positive, got {gen_frequency}.")
         self._gen_frequency = gen_frequency
         self._gen_current = gen_current
         self._pdo_exception: Optional[Exception] = None
@@ -249,7 +252,7 @@ class MotorControl:
         # Start the saw-tooth generator after the rotor is locked.
         # Do it progressively to avoid a large current spike at the start.
         freq_step = min(_MIN_FREQ_STEP, self._gen_frequency)
-        ramp_steps = max(1, round(self._gen_frequency / freq_step))
+        ramp_steps = max(1, math.ceil(self._gen_frequency / freq_step))
         for i in range(1, ramp_steps + 1):
             if i == 1:
                 # First step: start the generator at a low frequency
