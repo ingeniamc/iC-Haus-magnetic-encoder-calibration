@@ -19,6 +19,10 @@ import mu_3sl_interface as mu_3sl
 from ingeniamotion import MotionController
 from ingeniamotion.enums import SensorType
 
+from ic_haus_magnetic_encoder_calibration.config_loader import (
+    EncoderRegisterConfig,
+)
+
 from .drive_encoder_registers import (
     CALIB_ERROR_TOLERANCE,
     CALIB_FRAME_SIZE,
@@ -50,6 +54,7 @@ from .ic_haus_registers import (
     VOSS_N,
     BissAction,
     ICHausRegister,
+    ICHausRegisterField,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,6 +68,11 @@ _CALIB_OUT_ZERO_BISS = 0x00
 _CALIB_MODE_ST_RAW = 0x02
 _CALIB_MODEA_BISS = 0x02
 _CALIB_TEST = 0x00
+
+# Normal mode values for iC-MU registers (used to detect if a previous calibration was interrupted)
+_NORMAL_OUT_MSB = 0x06
+_NORMAL_MODE_ST = 0x00  # ABS mode
+_NORMAL_OUT_LSB = 0x00
 
 # CFGEW value that suppresses all error/warning sources from the
 # BiSS-C ERR and WRN status bits.  An uncalibrated encoder will
@@ -312,6 +322,31 @@ class Encoder:
         self._write_ic(CFGEW, state.cfgew)
         logger.info(f"Encoder {self._number}: iC-MU config registers applied.")
 
+    def apply_post_calibration_config(self, config: EncoderRegisterConfig) -> None:
+        """Apply post-calibration iC-MU configuration register values.
+
+        Args:
+            config: Post-calibration register values to write.
+        """
+        for register, register_field, value in config.register_writes():
+            self._write_ic_field(register, register_field, value)
+            logger.info(
+                f"Encoder {self._number}: {register.name} = 0x{value:02x}",
+            )
+
+    def _write_ic_field(
+        self,
+        register: ICHausRegister,
+        register_field: Optional[ICHausRegisterField],
+        value: int,
+    ) -> None:
+        """Write a full register, or a single bit-field via read-modify-write."""
+        if register_field is None:
+            self._write_ic(register, value)
+        else:
+            raw = self._read_ic(register)
+            self._write_ic(register, register_field.insert(raw, value))
+
     # -- Calibration mode --
 
     def ensure_normal_mode(self, enac_enabled: bool = True) -> bool:
@@ -336,8 +371,9 @@ class Encoder:
         # Check OUT_MSB and MODE_ST for normal mode
         out_msb = OUT_MSB_ZERO.field("out_msb").extract(self._read_ic(OUT_MSB_ZERO))
         mode_st = OUT_LSB_ST.field("mode_st").extract(self._read_ic(OUT_LSB_ST))
-        normal_out_msb = 0x06
-        normal_mode_st = 0x00  # ABS
+        # TODO: Fix this normal mode mess with constants!
+        normal_out_msb = _NORMAL_OUT_MSB
+        normal_mode_st = _NORMAL_MODE_ST  # ABS mode
 
         if out_msb == normal_out_msb and mode_st == normal_mode_st:
             # Encoder is already in normal mode
@@ -350,7 +386,7 @@ class Encoder:
         )
         # Restore to absolute mode with EEPROM-default output width
         lsb_raw = self._read_ic(OUT_LSB_ST)
-        lsb_raw = OUT_LSB_ST.field("out_lsb").insert(lsb_raw, 0)
+        lsb_raw = OUT_LSB_ST.field("out_lsb").insert(lsb_raw, _NORMAL_OUT_LSB)
         lsb_raw = OUT_LSB_ST.field("mode_st").insert(lsb_raw, normal_mode_st)
         self._write_ic(OUT_LSB_ST, lsb_raw)
 

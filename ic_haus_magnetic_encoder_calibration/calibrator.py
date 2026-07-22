@@ -24,6 +24,11 @@ from ingenialink.pdo import RPDOMap, RPDOMapItem, TPDOMap
 from ingeniamotion import MotionController
 from ingeniamotion.enums import SensorType
 
+from ic_haus_magnetic_encoder_calibration.config_loader import (
+    EncoderRegisterConfig,
+    load_configuration_file,
+)
+
 from .encoder import (
     CalibrationResult,
     DriveFrameConfig,
@@ -81,6 +86,7 @@ class _SingleEncoderCalibration:
         self._cal: Optional[mu_3sl.Calibration] = None
         self.n_master_periods: int = 0
         self.saved_drive_config: Optional[DriveFrameConfig] = None
+        self.post_calibration_ic_config: Optional[EncoderRegisterConfig] = None
         self.saved_ic_config: Optional[ICMURegisterState] = None
         self.converged: bool = False
         self.iteration_count: int = 0
@@ -119,6 +125,7 @@ class _SingleEncoderCalibration:
             enac_enabled: Whether to set ENAC (amplitude control) to enabled.
 
         """
+        # TODO: Quitar enac
         self.enc.ensure_normal_mode(enac_enabled)
         revision = self.enc.read_revision()
         self.saved_drive_config = self.enc.get_drive_config()
@@ -309,10 +316,30 @@ class _SingleEncoderCalibration:
         """Restore drive and iC-MU config (always called, even on error)."""
         try:
             if self.saved_ic_config is not None:
+                # Restore iC-MU config registers (exits raw mode) before EEPROM save.
                 self.enc.set_ic_config(self.saved_ic_config)
+
+            # Enable all error sources so real faults are visible.
             self.enc.enable_all_errors()
+
+            # Apply post-calibration config before EEPROM save (if available)
+            if self.post_calibration_ic_config is not None:
+                self.enc.apply_post_calibration_config(self.post_calibration_ic_config)
+
+            try:
+                # Save to EEPROM (raises on failure)
+                self.enc.save_to_eeprom()
+
+            except RuntimeError:
+                logger.error(f"Encoder {self.number}: could not save configuration to EEPROM.")
+
+            # Perform an internal reset of the encoder
+            self.enc.abs_reset()
+
             if self.saved_drive_config is not None:
+                # Restore drive frame config (exits calibration mode) after EEPROM save.
                 self.enc.set_drive_config(self.saved_drive_config)
+
         except Exception:
             logger.warning(
                 f"Encoder {self.number}: could not restore state (drive may be offline).",
@@ -329,13 +356,13 @@ class _SingleEncoderCalibration:
             )
             logger.info(f"Exported calibration data: {json_path}")
 
-    def finalize(self) -> CalibrationResult:
-        """Optimize nonius, save to EEPROM, and build the result.
-
-        Must only be called after convergence (:attr:`converged` is True).
+    def finalize(
+        self,
+    ) -> CalibrationResult:
+        """Finalize calibration: optimize SPO, restore config, save to EEPROM.
 
         Returns:
-            CalibrationResult for this encoder.
+            CalibrationResult with success status and iteration count.
         """
         enc = self.enc
         cal = self.cal
@@ -350,18 +377,23 @@ class _SingleEncoderCalibration:
         table_params = mu_3sl.nonius_track_offset_table_parameters(nonius_table)
         enc.write_nonius_parameters(table_params)
 
-        # Restore iC-MU config registers (exits raw mode) before EEPROM save.
-        assert self.saved_ic_config is not None
-        enc.set_ic_config(self.saved_ic_config)
+        # TODO: Move to restore_state() after testing
+        # # Restore iC-MU config registers (exits raw mode) before EEPROM save.
+        # assert self.saved_ic_config is not None
+        # enc.set_ic_config(self.saved_ic_config)
 
-        # Enable all error sources so real faults are visible.
-        enc.enable_all_errors()
+        # # Enable all error sources so real faults are visible.
+        # enc.enable_all_errors()
 
-        # Save to EEPROM (raises on failure)
-        enc.save_to_eeprom()
+        # # Apply post-calibration config before EEPROM save (if available)
+        # if self.post_calibration_ic_config is not None:
+        #     enc.apply_post_calibration_config(self.post_calibration_ic_config)
 
-        # Perform an internal reset of the encoder
-        enc.abs_reset()
+        # # Save to EEPROM (raises on failure)
+        # enc.save_to_eeprom()
+
+        # # Perform an internal reset of the encoder
+        # enc.abs_reset()
 
         final_master = cal.analog_master_track_adjustments()
         final_nonius = cal.analog_nonius_track_adjustments()
@@ -434,6 +466,7 @@ class EncoderCalibrator:
         self._save_residual_bar_plots = save_residual_bar_plots
         self._save_trend_plot = save_trend_plot
         self._save_json = save_json
+        self._encoders_post_calibration_config: Optional[dict[int, EncoderRegisterConfig]] = None
         # PDO state
         self._tpdo_map: Optional[TPDOMap] = None
         self._padding_rpdo: Optional[RPDOMap] = None
@@ -462,8 +495,27 @@ class EncoderCalibrator:
 
     @property
     def encoders(self) -> list[Encoder]:
-        """Return the list of enrolled encoders."""
+        """List of enrolled encoders.
+
+        Returns:
+            List of Encoder instances registered for calibration.
+
+        """
         return list(self._encoders)
+
+    def load_encoder_configs(self) -> bool:
+        """Load post-calibration encoder register configurations from a JSON file.
+
+        Returns:
+            True if the configuration file was successfully loaded, False otherwise.
+
+        """
+        try:
+            self._encoders_post_calibration_config = load_configuration_file()
+        except Exception as e:
+            logger.warning(f"Could not load encoder configs: {e}")
+            return False
+        return True
 
     # -- Motor control --
 
@@ -603,9 +655,25 @@ class EncoderCalibrator:
         encoders = [_SingleEncoderCalibration(enc) for enc in self._encoders]
 
         try:
-            # -- Setup phase 1: save state --
+            # -- Setup phase 1: save state and load post-calibration configs --
             for enc in encoders:
+                # First ensure the encoder is in normal mode (not raw mode) so that
+                # the library can read the revision and create a Calibration object.
                 enc.save_state(self._force_enac)
+                # Load post-calibration config if available, otherwise warn and use initial (normalized) values.
+                if (
+                    self._encoders_post_calibration_config
+                    and enc.number in self._encoders_post_calibration_config
+                ):
+                    enc.post_calibration_ic_config = self._encoders_post_calibration_config[
+                        enc.number
+                    ]
+                    logger.info(f"Loaded post-calibration config for encoder {enc.number}.")
+                else:
+                    # TODO: Review logs
+                    logger.warning(
+                        f"No post-calibration config found for encoder {enc.number}. Encoder will use initial values."
+                    )
 
             # -- Setup phase 2: calibration mode --
             for enc in encoders:
@@ -664,7 +732,9 @@ class EncoderCalibrator:
                     results: dict[int, CalibrationResult] = {}
                     for enc in encoders:
                         if enc.converged:
+                            # Then in the loop:
                             results[enc.number] = enc.finalize()
+
                         else:
                             logger.warning(
                                 f"Encoder {enc.number}: did NOT converge after"
@@ -688,4 +758,5 @@ class EncoderCalibrator:
 
         finally:
             for enc in encoders:
+                # TODO: Only restore state if not converged? Or always? Or only if converged and EEPROM save failed?
                 enc.restore_state()
