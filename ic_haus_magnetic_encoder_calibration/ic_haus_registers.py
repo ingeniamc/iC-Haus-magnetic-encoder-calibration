@@ -117,7 +117,7 @@ class ICHausRegister:
 
     @property
     def field_names(self) -> tuple[str, ...]:
-        """Return the names of all declared fields."""
+        """Names of all declared fields."""
         return tuple(self._fields)
 
 
@@ -138,8 +138,8 @@ PH_N = ICHausRegister(address=0x0A, name="Phase nonius")
 # Configuration registers with sub-fields
 ENAC = ICHausRegister(
     address=0x05,
-    name="Enable / auto-calibrate",
-    enac=ICHausRegisterField.from_bits(low=7, high=7, name="Auto-calibrate enable"),
+    name="Enable / amplitude control",
+    enac=ICHausRegisterField.from_bits(low=7, high=7, name="Amplitude-control enable"),
 )
 MODEA_MODEB = ICHausRegister(
     address=0x0B,
@@ -148,7 +148,12 @@ MODEA_MODEB = ICHausRegister(
 )
 CFGEW = ICHausRegister(
     address=0x0C,
-    name="Status config for E/W bits",
+    name="Error/Warning Status configuration",
+)
+FILT = ICHausRegister(
+    address=0x0E,
+    name="Digital filter for output signals",
+    filt=ICHausRegisterField.from_bits(low=0, high=2, name="Digital filter configuration"),
 )
 MPC = ICHausRegister(
     address=0x0F,
