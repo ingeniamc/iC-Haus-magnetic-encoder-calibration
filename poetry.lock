@@ -2507,18 +2507,18 @@ markers = {main = "platform_system != \"Windows\"", tests = "platform_system != 
 
 [[package]]
 name = "mu_3sl"
-version = "3.4.2.1"
+version = "3.4.3.1.post2"
 description = "A mu_3sl_interface library wrapper for python"
 optional = false
 python-versions = ">=3.6"
 groups = ["main"]
 files = [
-    {file = "mu_3sl-3.4.2.1-py3-none-any.whl", hash = "sha256:a0ddb1852581ca08c5de87d04c514b4916933f27108f6efc7be949891c0580c4"},
+    {file = "mu_3sl-3.4.3.1.post2-py3-none-any.whl", hash = "sha256:5cd26f47edd1cfa3e5d78531a52d85c7c7e0a985a8f38dde8a98815f699c9c2c"},
 ]
 
 [package.source]
 type = "file"
-url = "libs/mu_3sl-3.4.2.1-py3-none-any.whl"
+url = "libs/mu_3sl-3.4.3.1.post2-py3-none-any.whl"
 
 [[package]]
 name = "multiping"
@@ -4877,4 +4877,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<3.13"
-content-hash = "41edfbdcb8c1d0dfc0fb2284779137fda024220e0566eff3470b64266ed408b0"
+content-hash = "65dbe56eec0805fc69a25f2278b30d32ca70688a5267ea47c08f97e500cf1d3a"
