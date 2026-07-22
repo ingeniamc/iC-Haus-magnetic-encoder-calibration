@@ -3,13 +3,16 @@
   "description": "Default encoder configuration.",
   "1": {
     "OUT_MSB": "0x05",
+    "OUT_LSB": "0x00",
     "MODE_ST": "0x00",
     "ENAC": "0x01",
-    "CFGEW": "0x00",
+    "CFGEW": "0xff",
     "FILT": "0x02"
+    
   },
   "2": {
     "OUT_MSB": "0x06",
+    "OUT_LSB": "0x00",
     "MODE_ST": "0x00",
     "ENAC": "0x01",
     "CFGEW": "0xff",

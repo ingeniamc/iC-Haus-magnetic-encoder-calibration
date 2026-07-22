@@ -25,6 +25,7 @@ JSON_VERSION = "1.0"
 
 # JSON keys for encoder register config
 JSON_OUT_MSB_KEY = "OUT_MSB"
+JSON_OUT_LSB_KEY = "OUT_LSB"
 JSON_MODE_ST_KEY = "MODE_ST"
 JSON_ENAC_KEY = "ENAC"
 JSON_CFGEW_KEY = "CFGEW"
@@ -51,6 +52,7 @@ class EncoderRegisterConfig:
     """
 
     out_msb: int  # Output frame MSB (OUT_MSB) register value
+    out_lsb: int  # Output frame LSB (OUT_LSB) register value
     mode_st: int  # Mode and status (MODE_ST) register value
     enac: int  # Enable amplitude control (ENAC) register value
     cfgew: int  # Configuration word (CFGEW) register value
@@ -72,6 +74,7 @@ class EncoderRegisterConfig:
         """
         required_keys = {
             JSON_OUT_MSB_KEY,
+            JSON_OUT_LSB_KEY,
             JSON_MODE_ST_KEY,
             JSON_ENAC_KEY,
             JSON_CFGEW_KEY,
@@ -85,6 +88,7 @@ class EncoderRegisterConfig:
         try:
             return cls(
                 out_msb=_parse_hex_or_int(data[JSON_OUT_MSB_KEY]),
+                out_lsb=_parse_hex_or_int(data[JSON_OUT_LSB_KEY]),
                 mode_st=_parse_hex_or_int(data[JSON_MODE_ST_KEY]),
                 enac=_parse_hex_or_int(data[JSON_ENAC_KEY]),
                 cfgew=_parse_hex_or_int(data[JSON_CFGEW_KEY]),
@@ -108,6 +112,7 @@ class EncoderRegisterConfig:
         """
         return [
             (OUT_MSB_ZERO, OUT_MSB_ZERO.field("out_msb"), self.out_msb),
+            (OUT_LSB_ST, OUT_LSB_ST.field("out_lsb"), self.out_lsb),
             (OUT_LSB_ST, OUT_LSB_ST.field("mode_st"), self.mode_st),
             (ENAC, ENAC.field("enac"), self.enac),
             (CFGEW, None, self.cfgew),
