@@ -2,20 +2,20 @@
   "version": "1.0",
   "description": "Default encoder configuration.",
   "1": {
-    "OUT_MSB": "0x05",
-    "OUT_LSB": "0x00",
-    "MODE_ST": "0x00",
-    "ENAC": "0x01",
-    "CFGEW": "0x00",
-    "FILT": "0x02"
+    "OUT_MSB": "",
+    "OUT_LSB": "",
+    "MODE_ST": "",
+    "ENAC": "",
+    "CFGEW": "",
+    "FILT": ""
     
   },
   "2": {
-    "OUT_MSB": "0x06",
-    "OUT_LSB": "0x00",
-    "MODE_ST": "0x00",
-    "ENAC": "0x01",
-    "CFGEW": "0x00",
-    "FILT": "0x03"
+    "OUT_MSB": "",
+    "OUT_LSB": "",
+    "MODE_ST": "",
+    "ENAC": "",
+    "CFGEW": "",
+    "FILT": ""
   }
 }
