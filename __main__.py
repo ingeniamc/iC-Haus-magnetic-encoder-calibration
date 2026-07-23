@@ -28,11 +28,10 @@ def _parse_bool(value: str) -> bool:
         value: The string value to parse.
 
     Returns:
-        bool: Parsed boolean value.
+        The parsed boolean value.
 
     Raises:
         argparse.ArgumentTypeError: If the value cannot be parsed as a boolean.
-
     """
     if value.lower() in ("true", "1", "yes"):
         return True
@@ -40,6 +39,25 @@ def _parse_bool(value: str) -> bool:
         return False
     msg = f"Expected true/false, got {value!r}"
     raise argparse.ArgumentTypeError(msg)
+
+
+def _positive_float(value: str) -> float:
+    """Parse a strictly-positive float CLI argument value.
+
+    Args:
+        value: The string value to parse.
+
+    Returns:
+        The parsed float value.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not a strictly-positive float.
+    """
+    number = float(value)
+    if number <= 0:
+        msg = f"Expected a positive float number, got {value!r}"
+        raise argparse.ArgumentTypeError(msg)
+    return number
 
 
 def parse_args() -> argparse.Namespace:
@@ -90,7 +108,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--gen-frequency",
-        type=float,
+        type=_positive_float,
         default=DEFAULT_GEN_FREQ,
         help=f"Saw-tooth generator frequency in Hz (default: {DEFAULT_GEN_FREQ})",
     )

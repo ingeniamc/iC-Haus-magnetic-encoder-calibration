@@ -9,6 +9,7 @@ additional PDO maps (e.g. data TPDO for encoder position) any time before
 """
 
 import logging
+import math
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -24,12 +25,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_GEN_FREQ = 0.4  # Hz - saw-tooth frequency for internal generator
 DEFAULT_GEN_CURRENT = 1.0  # Amps
 
-
+# Current and frequency ramping parameters
 _GEN_CYCLES = 10_000  # generous upper bound; calibration finishes well before exhaustion
 _GEN_DIRECTION = 1  # saw-tooth direction (positive = forward)
 _RAMP_STEPS = 10  # number of current ramp steps
-_RAMP_INTERVAL = 0.2  # seconds between ramp steps
+_CURRENT_RAMP_INTERVAL = 0.2  # seconds between current ramp steps
+_FREQUENCY_RAMP_INTERVAL = 0.8  # seconds between frequency ramp steps
 _PDO_WATCHDOG_TIMEOUT = 6.0  # seconds — generous to tolerate GIL blocking (matplotlib, etc.)
+_MIN_FREQ_STEP = 1.0  # Hz - starting frequency for the ramp (upper bound)
 
 
 class MotorControl:
@@ -58,6 +61,8 @@ class MotorControl:
         self._fsoe_active = False
         self._fsoe_prepared = False
         self._handler: Optional[FSoEMasterHandler] = None
+        if gen_frequency <= 0:
+            raise ValueError(f"gen_frequency must be positive, got {gen_frequency}.")
         self._gen_frequency = gen_frequency
         self._gen_current = gen_current
         self._pdo_exception: Optional[Exception] = None
@@ -236,22 +241,36 @@ class MotorControl:
         self._mc.motion.motor_enable(axis=self._axis)
 
         # Ramp current to full amplitude at a static angle.
-        step = self._gen_current / _RAMP_STEPS
+        current_step = self._gen_current / _RAMP_STEPS
         for i in range(1, _RAMP_STEPS + 1):
             self._mc.motion.set_current_quadrature(
-                current=step * i,
+                current=current_step * i,
                 axis=self._axis,
             )
-            time.sleep(_RAMP_INTERVAL)
+            time.sleep(_CURRENT_RAMP_INTERVAL)
 
         # Start the saw-tooth generator after the rotor is locked.
-        self._mc.motion.internal_generator_saw_tooth_move(
-            direction=_GEN_DIRECTION,
-            cycles=_GEN_CYCLES,
-            frequency=self._gen_frequency,
-            axis=self._axis,
-        )
-        logger.info("Motor started.")
+        # Do it progressively to avoid a large current spike at the start.
+        freq_step = min(_MIN_FREQ_STEP, self._gen_frequency)
+        ramp_steps = max(1, math.ceil(self._gen_frequency / freq_step))
+        for i in range(1, ramp_steps + 1):
+            if i == 1:
+                # First step: start the generator at a low frequency
+                self._mc.motion.internal_generator_saw_tooth_move(
+                    direction=_GEN_DIRECTION,
+                    cycles=0,
+                    frequency=freq_step,
+                    axis=self._axis,
+                )
+            else:
+                # Next steps: ramp the frequency up to the target value
+                target_freq = self._gen_frequency if i == ramp_steps else freq_step * i
+                self._mc.communication.set_register(
+                    self._mc.motion.GENERATOR_FREQUENCY_REGISTER,
+                    target_freq,
+                    axis=self._axis,
+                )
+            time.sleep(_FREQUENCY_RAMP_INTERVAL)
 
     def _stop_motor(self) -> None:
         """Disable the motor."""
