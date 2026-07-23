@@ -62,17 +62,15 @@ logger = logging.getLogger(__name__)
 _BISS_SETTLE_S = 0.1
 
 # Calibration field values for iC-MU registers
-_CALIB_OUT_MSB = 0x0E
+# Obtained from iC-Haus AN1 "Offline Calibration" application note, Table 1.
+_CALIB_ENAC = 0x01
 _CALIB_OUT_LSB = 0x00
-_CALIB_OUT_ZERO_BISS = 0x00
-_CALIB_MODE_ST_RAW = 0x02
-_CALIB_MODEA_BISS = 0x02
-_CALIB_TEST = 0x00
-
-# Normal mode values for iC-MU registers (used to detect if a previous calibration was interrupted)
-_NORMAL_OUT_MSB = 0x06
-_NORMAL_MODE_ST = 0x00  # ABS mode
-_NORMAL_OUT_LSB = 0x00
+_CALIB_OUT_MSB = 0x0E  # MSB = 13 + 14 = 27 (BiSS payload bits 0-27)
+_CALIB_OUT_ZERO_BISS = 0x00  # No padding zeros for BiSS
+_CALIB_MODE_ST = 0x02  # Raw analog data (required for calibration)
+_CALIB_TEST = 0x00  # Deactivate testmodes
+_CALIB_MPC = 0x0B  # MPC=11 (2^11=2048 master periods) is the minimum allowed for raw data capture
+_CALIB_MODEA_BISS = 0x02  # Enable BiSS interface
 
 # CFGEW value that suppresses all error/warning sources from the
 # BiSS-C ERR and WRN status bits.  An uncalibrated encoder will
@@ -165,6 +163,7 @@ class Encoder:
         sensor_type: Drive feedback sensor type for this encoder.
             The encoder channel (1 or 2) is derived from the sensor type.
         axis: Drive axis number.
+        config: Register configuration.
     """
 
     def __init__(
@@ -173,12 +172,14 @@ class Encoder:
         sensor_type: SensorType,
         *,
         axis: int = 1,
+        config: EncoderRegisterConfig,
     ) -> None:
         self._mc = mc
         self._sensor_type = sensor_type
         self._number = _SENSOR_TYPE_TO_ENCODER[sensor_type]
         self._axis = axis
         self._regs = get_encoder_registers(self._number)
+        self._config: EncoderRegisterConfig = config
 
     @property
     def number(self) -> int:
@@ -235,6 +236,42 @@ class Encoder:
         # Let the BiSS transaction settle before any subsequent operations.
         # They could potentially depend on the new register value, so it's safer to wait here
         time.sleep(_BISS_SETTLE_S)
+
+    def _write_ic_field(
+        self,
+        register: ICHausRegister,
+        register_field: ICHausRegisterField,
+        value: int,
+    ) -> None:
+        """Write a single bit-field via read-modify-write.
+
+        Args:
+            register: ICHausRegister object to write to.
+            register_field: ICHausRegisterField object specifying the field to modify.
+            value: Integer value to write to the field.
+
+
+        """
+        raw = self._read_ic(register)
+        self._write_ic(register, register_field.insert(raw, value))
+
+    def _read_ic_field(
+        self,
+        register: ICHausRegister,
+        register_field: ICHausRegisterField,
+    ) -> int:
+        """Read a single bit-field via read-modify-write.
+
+        Args:
+            register: ICHausRegister object to read from.
+            register_field: ICHausRegisterField object specifying the field to extract.
+
+        Returns:
+            Integer value of the specified field.
+
+        """
+        raw = self._read_ic(register)
+        return register_field.extract(raw)
 
     # -- Step 1: Revision --
 
@@ -322,140 +359,60 @@ class Encoder:
         self._write_ic(CFGEW, state.cfgew)
         logger.info(f"Encoder {self._number}: iC-MU config registers applied.")
 
-    def apply_post_calibration_config(self, config: EncoderRegisterConfig) -> None:
-        """Apply post-calibration iC-MU configuration register values.
-
-        Args:
-            config: Post-calibration register values to write.
-        """
-        for register, register_field, value in config.register_writes():
-            self._write_ic_field(register, register_field, value)
-            logger.info(
+    def apply_config(self) -> None:
+        """Apply iC-MU configuration register values previously loaded from a JSON file."""
+        for register, register_field, value in self._config.register_writes():
+            if register_field is None:
+                self._write_ic(register, value)
+            else:
+                self._write_ic_field(register, register_field, value)
+            logger.debug(
                 f"Encoder {self._number}: {register.name} = 0x{value:02x}",
             )
-
-    def _write_ic_field(
-        self,
-        register: ICHausRegister,
-        register_field: Optional[ICHausRegisterField],
-        value: int,
-    ) -> None:
-        """Write a full register, or a single bit-field via read-modify-write."""
-        if register_field is None:
-            self._write_ic(register, value)
-        else:
-            raw = self._read_ic(register)
-            self._write_ic(register, register_field.insert(raw, value))
+        logger.info(f"Encoder {self._number}: configuration applied ({self._config})")
 
     # -- Calibration mode --
-
-    def ensure_normal_mode(self, enac_enabled: bool = True) -> bool:
-        """Check if the encoder is in normal ABS mode and fix it if not.
-
-        A previous interrupted calibration may leave the iC-MU in RAW
-        mode with an enlarged output, causing the drive to receive
-        frames that don't match its expected frame size.
-
-        Args:
-            enac_enabled: Whether to set ENAC (amplitude control) to enabled.
-
-        Returns:
-            True if the encoder was already in normal mode, False if a
-            fix was applied.
-        """
-        # Disable analog calibration enable bit
-        enac_raw = self._read_ic(ENAC)
-        enac_raw = ENAC.field("enac").insert(enac_raw, int(enac_enabled))
-        self._write_ic(ENAC, enac_raw)
-
-        # Check OUT_MSB and MODE_ST for normal mode
-        out_msb = OUT_MSB_ZERO.field("out_msb").extract(self._read_ic(OUT_MSB_ZERO))
-        mode_st = OUT_LSB_ST.field("mode_st").extract(self._read_ic(OUT_LSB_ST))
-        # TODO: Fix this normal mode mess with constants!
-        normal_out_msb = _NORMAL_OUT_MSB
-        normal_mode_st = _NORMAL_MODE_ST  # ABS mode
-
-        if out_msb == normal_out_msb and mode_st == normal_mode_st:
-            # Encoder is already in normal mode
-            return True
-
-        logger.warning(
-            f"Encoder {self._number}: not in normal mode"
-            f" (OUT_MSB=0x{out_msb:02X}, MODE_ST={mode_st});"
-            f" restoring from previous interrupted calibration.",
-        )
-        # Restore to absolute mode with EEPROM-default output width
-        lsb_raw = self._read_ic(OUT_LSB_ST)
-        lsb_raw = OUT_LSB_ST.field("out_lsb").insert(lsb_raw, _NORMAL_OUT_LSB)
-        lsb_raw = OUT_LSB_ST.field("mode_st").insert(lsb_raw, normal_mode_st)
-        self._write_ic(OUT_LSB_ST, lsb_raw)
-
-        msb_raw = self._read_ic(OUT_MSB_ZERO)
-        msb_raw = OUT_MSB_ZERO.field("out_msb").insert(msb_raw, normal_out_msb)
-        self._write_ic(OUT_MSB_ZERO, msb_raw)
-
-        # Suppress all errors during recovery
-        self._write_ic(CFGEW, _CALIB_CFGEW_SUPPRESS)
-        return False
-
     def configure_in_calibration_mode(self) -> int:
         """Configure iC-MU registers and drive frame for calibration.
 
-        Reads the current iC-MU state, writes calibration values and
-        sets the drive encoder frame for raw data capture.  Use
-        ``get_ic_config`` / ``get_drive_config`` before calling this
+        Writes calibration values and sets the drive encoder frame for raw data capture.
+        Use ``get_ic_config`` / ``get_drive_config`` before calling this
         method if you need to restore the original state later.
 
         Returns:
             Number of master periods (2^MPC).
         """
-        enac_orig = self._read_ic(ENAC)
-        modea_orig = self._read_ic(MODEA_MODEB)
-        out_orig = self._read_ic(OUT_MSB_ZERO)
-        lsb_orig = self._read_ic(OUT_LSB_ST)
-        test_orig = self._read_ic(TEST)
-        mpc_orig = self._read_ic(MPC)
-
         # Enable analog calibration (ENAC bit)
-        enac_new = ENAC.field("enac").insert(enac_orig, 1)
-        if enac_new != enac_orig:
-            self._write_ic(ENAC, enac_new)
+        self._write_ic_field(ENAC, ENAC.field("enac"), _CALIB_ENAC)
 
         # Set interface mode to BiSS
-        modea_new = MODEA_MODEB.field("modea").insert(modea_orig, _CALIB_MODEA_BISS)
-        if modea_new != modea_orig:
-            self._write_ic(MODEA_MODEB, modea_new)
+        self._write_ic_field(MODEA_MODEB, MODEA_MODEB.field("modea"), _CALIB_MODEA_BISS)
 
         # Configure output shift register length:
         # OUT_MSB=0x0E selects bit 27 as the MSB (14 master + 14 nonius = 28 bits)
         # OUT_ZERO=0x00 — no padding zeros (BiSS doesn't need them; SPI uses 0x04)
-        out = OUT_MSB_ZERO.field("out_zero").insert(out_orig, _CALIB_OUT_ZERO_BISS)
-        out = OUT_MSB_ZERO.field("out_msb").insert(out, _CALIB_OUT_MSB)
-        if out != out_orig:
-            self._write_ic(OUT_MSB_ZERO, out)
+        self._write_ic_field(OUT_MSB_ZERO, OUT_MSB_ZERO.field("out_msb"), _CALIB_OUT_MSB)
+        self._write_ic_field(OUT_MSB_ZERO, OUT_MSB_ZERO.field("out_zero"), _CALIB_OUT_ZERO_BISS)
 
         # Select raw master+nonius track output:
         # MODE_ST=0x02 selects raw analog data (required for calibration)
         # OUT_LSB=0x00 starts output from bit 0 (no truncation)
-        lsb = OUT_LSB_ST.field("mode_st").insert(lsb_orig, _CALIB_MODE_ST_RAW)
-        lsb = OUT_LSB_ST.field("out_lsb").insert(lsb, _CALIB_OUT_LSB)
-        if lsb != lsb_orig:
-            self._write_ic(OUT_LSB_ST, lsb)
+        self._write_ic_field(OUT_LSB_ST, OUT_LSB_ST.field("mode_st"), _CALIB_MODE_ST)
+        self._write_ic_field(OUT_LSB_ST, OUT_LSB_ST.field("out_lsb"), _CALIB_OUT_LSB)
 
         # Clear test register
-        if test_orig != _CALIB_TEST:
-            self._write_ic(TEST, _CALIB_TEST)
+        self._write_ic(TEST, _CALIB_TEST)
 
         # Suppress all ERR/WRN sources so the drive doesn't fault
         # on error bits from the (still uncalibrated) encoder.
         self._write_ic(CFGEW, _CALIB_CFGEW_SUPPRESS)
 
         # MPC: if 0x0C set to 0x0B (per iC-Haus AN1 "Offline Calibration", Table 1)
-        mpc_val = MPC.field("mpc").extract(mpc_orig)
+        mpc_val = self._read_ic_field(MPC, MPC.field("mpc"))
         if mpc_val == 0x0C:
-            new_mpc = MPC.field("mpc").insert(mpc_orig, 0x0B)
-            self._write_ic(MPC, new_mpc)
-            mpc_val = 0x0B
+            # MPC = 12 not allowed for raw data
+            self._write_ic_field(MPC, MPC.field("mpc"), _CALIB_MPC)
+            mpc_val = _CALIB_MPC
 
         # Configure drive frame for calibration
         r = self._regs
@@ -583,11 +540,10 @@ class Encoder:
         """
         self._write_ic(CMD, _CMD_WRITE_ALL)
         time.sleep(1.0)
-        status = self._read_ic(STATUS1)
-        if STATUS1.field("epr_err").extract(status):
+        if self._read_ic_field(STATUS1, STATUS1.field("epr_err")):
             msg = f"Encoder {self._number}: EEPROM write error (EPR_ERR)."
             raise RuntimeError(msg)
-        if STATUS1.field("crc_err").extract(status):
+        if self._read_ic_field(STATUS1, STATUS1.field("crc_err")):
             msg = f"Encoder {self._number}: CRC error after EEPROM write."
             raise RuntimeError(msg)
         logger.info(f"Encoder {self._number}: EEPROM saved successfully.")
