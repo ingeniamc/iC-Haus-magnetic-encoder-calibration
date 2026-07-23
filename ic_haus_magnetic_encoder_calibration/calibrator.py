@@ -26,10 +26,11 @@ from ingeniamotion.enums import SensorType
 
 from ic_haus_magnetic_encoder_calibration.config_loader import (
     EncoderRegisterConfig,
-    load_configuration_file,
+    load_encoders_configuration_file,
 )
 
 from .encoder import (
+    _SENSOR_TYPE_TO_ENCODER,
     CalibrationResult,
     DriveFrameConfig,
     Encoder,
@@ -118,15 +119,14 @@ class _SingleEncoderCalibration:
 
     # -- Setup phases --
 
-    def save_state(self, enac_enabled: bool = False) -> None:
-        """Phase 1: ensure normal mode, read revision, save configs.
+    def save_state(self) -> None:
+        """Phase 1: Apply configuration, read revision, save configs.
 
-        Args:
-            enac_enabled: Whether to set ENAC (amplitude control) to enabled.
+        Normal mode is obtained from the encoders.json configuration file,
+        which is loaded by the calibrator before calling this method.
 
         """
-        # TODO: Quitar enac
-        self.enc.ensure_normal_mode(enac_enabled)
+        self.enc.apply_config()
         revision = self.enc.read_revision()
         self.saved_drive_config = self.enc.get_drive_config()
         self.saved_ic_config = self.enc.get_ic_config()
@@ -185,15 +185,28 @@ class _SingleEncoderCalibration:
 
         Updates :attr:`iteration_count`, :attr:`residual_history`,
         :attr:`iteration_log`, and potentially sets :attr:`converged`.
+
+        Args:
+            iteration: Current iteration number (1-based).
+            raw_data: List of packed 32-bit register values from the drive.
+            output_dir: Directory for diagnostic plot PNGs.
+            interactive: If True, show plots interactively instead of saving.
+            save_raw_plots: If True, save raw waveform plots for this iteration.
+            save_residual_bar_plots: If True, save residual bar plots for this iteration.
+            save_trend_plot: If True, save residuals trend plot (one per encoder).
+
+        Raises:
+            RuntimeError: If monitoring data is empty or non-positive.
+
         """
         self.iteration_count = iteration
 
         if not raw_data:
             logger.warning(
                 f"Encoder {self.number}: 0 samples captured at iteration"
-                f" {iteration} — PDO exchange may have died. Skipping.",
+                f" {iteration} — PDO exchange may have died. Stopping.",
             )
-            return
+            raise RuntimeError("No samples captured. PDO exchange may have died.")
 
         # Unpack packed register values into master / nonius tracks.
         master_raw: list[int] = []
@@ -315,28 +328,24 @@ class _SingleEncoderCalibration:
     def restore_state(self) -> None:
         """Restore drive and iC-MU config (always called, even on error)."""
         try:
-            if self.saved_ic_config is not None:
+            if self.saved_ic_config is None:
+                logger.warning(f"Encoder {self.number}: no saved iC-MU config to restore.")
+            else:
                 # Restore iC-MU config registers (exits raw mode) before EEPROM save.
                 self.enc.set_ic_config(self.saved_ic_config)
+                try:
+                    # Save to EEPROM (raises on failure)
+                    self.enc.save_to_eeprom()
 
-            # Enable all error sources so real faults are visible.
-            self.enc.enable_all_errors()
-
-            # Apply post-calibration config before EEPROM save (if available)
-            if self.post_calibration_ic_config is not None:
-                self.enc.apply_post_calibration_config(self.post_calibration_ic_config)
-
-            try:
-                # Save to EEPROM (raises on failure)
-                self.enc.save_to_eeprom()
-
-            except RuntimeError:
-                logger.error(f"Encoder {self.number}: could not save configuration to EEPROM.")
+                except RuntimeError:
+                    logger.error(f"Encoder {self.number}: could not save configuration to EEPROM.")
 
             # Perform an internal reset of the encoder
             self.enc.abs_reset()
 
-            if self.saved_drive_config is not None:
+            if self.saved_drive_config is None:
+                logger.warning(f"Encoder {self.number}: no saved drive config to restore.")
+            else:
                 # Restore drive frame config (exits calibration mode) after EEPROM save.
                 self.enc.set_drive_config(self.saved_drive_config)
 
@@ -377,24 +386,7 @@ class _SingleEncoderCalibration:
         table_params = mu_3sl.nonius_track_offset_table_parameters(nonius_table)
         enc.write_nonius_parameters(table_params)
 
-        # TODO: Move to restore_state() after testing
-        # # Restore iC-MU config registers (exits raw mode) before EEPROM save.
-        # assert self.saved_ic_config is not None
-        # enc.set_ic_config(self.saved_ic_config)
-
-        # # Enable all error sources so real faults are visible.
-        # enc.enable_all_errors()
-
-        # # Apply post-calibration config before EEPROM save (if available)
-        # if self.post_calibration_ic_config is not None:
-        #     enc.apply_post_calibration_config(self.post_calibration_ic_config)
-
-        # # Save to EEPROM (raises on failure)
-        # enc.save_to_eeprom()
-
-        # # Perform an internal reset of the encoder
-        # enc.abs_reset()
-
+        # Apply the final analog adjustments to the iC-MU registers (in raw mode).
         final_master = cal.analog_master_track_adjustments()
         final_nonius = cal.analog_nonius_track_adjustments()
         spo_n = [table_params.spo_n[i] for i in range(15)]
@@ -464,7 +456,6 @@ class EncoderCalibrator:
         self._save_residual_bar_plots = save_residual_bar_plots
         self._save_trend_plot = save_trend_plot
         self._save_json = save_json
-        self._encoders_post_calibration_config: Optional[dict[int, EncoderRegisterConfig]] = None
         # PDO state
         self._tpdo_map: Optional[TPDOMap] = None
         self._padding_rpdo: Optional[RPDOMap] = None
@@ -488,8 +479,18 @@ class EncoderCalibrator:
 
         Returns:
             The newly created Encoder instance.
+
+        Raises:
+            ValueError: If the sensor type has no valid config.
+
         """
-        enc = Encoder(self._mc, sensor_type, axis=self._axis)
+        # Check for config
+        enc_config = self._encoders_post_calibration_config.get(
+            _SENSOR_TYPE_TO_ENCODER[sensor_type], {}
+        )
+        if not enc_config:
+            raise ValueError(f"Encoder {sensor_type} has no valid config. Review encoders.json.")
+        enc = Encoder(self._mc, sensor_type, axis=self._axis, config=enc_config)
         self._encoders.append(enc)
         logger.info(f"Registered encoder {enc.number} for calibration.")
         return enc
@@ -504,23 +505,9 @@ class EncoderCalibrator:
         """
         return list(self._encoders)
 
-    def load_encoder_configs(self) -> bool:
-        """Load post-calibration encoder register configurations from a JSON file.
-
-        Returns:
-            True if the configuration file was successfully loaded, False otherwise.
-
-        """
-        try:
-            self._encoders_post_calibration_config = load_configuration_file()
-        except Exception as e:
-            logger.warning(f"Could not load encoder configs: {e}")
-            return False
-        return True
-
     # -- Motor control --
 
-    def configure_encoders(self) -> None:
+    def configure_drive_encoders(self) -> None:
         """Configure the drive for internal generator mode with enrolled encoders."""
         sensor_types = [enc.sensor_type for enc in self._encoders]
         self._motor.configure_encoders(sensor_types)
@@ -660,21 +647,7 @@ class EncoderCalibrator:
             for enc in encoders:
                 # First ensure the encoder is in normal mode (not raw mode) so that
                 # the library can read the revision and create a Calibration object.
-                enc.save_state(self._force_enac)
-                # Load post-calibration config if available, otherwise warn and use initial (normalized) values.
-                if (
-                    self._encoders_post_calibration_config
-                    and enc.number in self._encoders_post_calibration_config
-                ):
-                    enc.post_calibration_ic_config = self._encoders_post_calibration_config[
-                        enc.number
-                    ]
-                    logger.info(f"Loaded post-calibration config for encoder {enc.number}.")
-                else:
-                    # TODO: Review logs
-                    logger.warning(
-                        f"No post-calibration config found for encoder {enc.number}. Encoder will use initial values."
-                    )
+                enc.save_state()
 
             # -- Setup phase 2: calibration mode --
             for enc in encoders:
@@ -759,5 +732,4 @@ class EncoderCalibrator:
 
         finally:
             for enc in encoders:
-                # TODO: Only restore state if not converged? Or always? Or only if converged and EEPROM save failed?
                 enc.restore_state()

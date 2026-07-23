@@ -156,14 +156,6 @@ def parse_args() -> argparse.Namespace:
         help="Path to an XCF configuration file to load onto the drive before calibration",
     )
     parser.add_argument(
-        "--apply-encoder-config",
-        type=_parse_bool,
-        default=False,
-        metavar="BOOL",
-        help="Apply post-calibration encoder register values from "
-        "'encoder_configs/encoders.json' (default: false)",
-    )
-    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable debug logging",
@@ -206,23 +198,13 @@ def main() -> None:
         save_json=args.save_json,
     )
 
-    if args.apply_encoder_config:
-        if calibrator.load_encoder_configs():
-            logger.info("Loaded encoder configuration: encoder_configs/encoders.json")
-        else:
-            logger.warning(
-                "Failed to load encoder configuration from encoder_configs/encoders.json. "
-                "Encoders will be reset to initial configuration after the process, "
-                "whether it fails or not."
-            )
-
-    # TODO: 
     encoder_sensor_types = {1: SensorType.ABS1, 2: SensorType.SSI2}
     encoder_numbers = [1, 2] if args.encoder == "both" else [int(args.encoder)]
     for num in encoder_numbers:
+        # TODO: Load encoder configuration from JSON file here
         calibrator.add_encoder(encoder_sensor_types[num])
 
-    calibrator.configure_encoders()
+    calibrator.configure_drive_encoders()
 
     results = calibrator.calibrate()
 

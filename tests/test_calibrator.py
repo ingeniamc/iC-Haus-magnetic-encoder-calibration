@@ -522,7 +522,7 @@ class TestCalibrationHardware:
         enc1.write_analog_adjustments(zeros, zeros)
         enc2.write_analog_adjustments(zeros, zeros)
 
-        cal.configure_encoders()
+        cal.configure_drive_encoders()
 
         results = cal.calibrate()
 

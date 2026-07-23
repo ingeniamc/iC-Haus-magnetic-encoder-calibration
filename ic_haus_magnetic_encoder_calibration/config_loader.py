@@ -80,6 +80,7 @@ class EncoderRegisterConfig:
             JSON_CFGEW_KEY,
             JSON_FILT_KEY,
         }
+        # Missing keys
         missing_keys = required_keys - set(data.keys())
         if missing_keys:
             msg = f"Missing required register keys: {missing_keys}"
@@ -119,6 +120,14 @@ class EncoderRegisterConfig:
             (FILT, FILT.field("filt"), self.filt),
         ]
 
+    def __str__(self) -> str:
+        """Return formatted string of register values."""
+        return (
+            f"{JSON_OUT_MSB_KEY}={self.out_msb}, {JSON_OUT_LSB_KEY}={self.out_lsb}, "
+            f"{JSON_MODE_ST_KEY}={self.mode_st}, {JSON_ENAC_KEY}={self.enac}, "
+            f"{JSON_CFGEW_KEY}={self.cfgew}, {JSON_FILT_KEY}={self.filt}"
+        )
+
 
 def _parse_hex_or_int(value: str | int) -> int:
     """Parse a value that can be either a hex string or integer.
@@ -137,6 +146,9 @@ def _parse_hex_or_int(value: str | int) -> int:
 
     if isinstance(value, str):
         value = value.strip()
+        if not value:
+            msg = "Cannot parse empty string"
+            raise ValueError(msg)
         if value.lower().startswith("0x"):
             return int(value, 16)
         return int(value)
@@ -145,18 +157,19 @@ def _parse_hex_or_int(value: str | int) -> int:
     raise ValueError(msg)
 
 
-def load_configuration_file(
+@staticmethod
+def load_encoders_configuration_file(
     config_file: Optional[Path] = DEFAULT_ENCODER_CONFIG_PATH,
 ) -> dict[int, EncoderRegisterConfig]:
     """Load encoder configurations from JSON file.
 
-    # TODO: Update to latest JSON format and validate against schema.
     Expected JSON structure:
     ```json
     {
         "version": "1.0",
         "1": {
             "OUT_MSB": "0x05",
+            "OUT_LSB": "0x00",
             "MODE_ST": "0x00",
             "ENAC": "0x01",
             "CFGEW": "0xff",
@@ -200,39 +213,11 @@ def load_configuration_file(
             enc_num = int(enc_key)
             try:
                 configs[enc_num] = EncoderRegisterConfig.from_dict(data[enc_key])
-            except ValueError as e:
-                msg = f"Invalid config for {enc_key}: {e}"
-                raise ValueError(msg) from e
+            except ValueError:
+                configs[enc_num] = None
 
     if not configs:
-        msg = f"No encoder configs found in {config_file}"
+        msg = f"No valid encoder configs found in {config_file}"
         raise ValueError(msg)
 
     return configs
-
-
-def get_config_for_encoder(
-    config_file: Optional[Path],
-    encoder_num: int,
-) -> Optional[EncoderRegisterConfig]:
-    """Load configuration for a specific encoder from file.
-
-    Args:
-        config_file: Path to config file, or None to skip.
-        encoder_num: Encoder number (1 or 2).
-
-    Returns:
-        EncoderRegisterConfig if found, None if file is not provided or
-        encoder not found in file.
-
-    Raises:
-        ValueError: If file exists but has invalid format.
-    """
-    if config_file is None:
-        return None
-
-    try:
-        configs = load_configuration_file(config_file)
-        return configs.get(encoder_num)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
