@@ -18,6 +18,9 @@ encoder's EEPROM.
 - The XDF dictionary file for your drive
 - An EtherCAT network interface (e.g. `\Device\NPF_{...}`)
 - The `mu-3sl` library
+- A `config/encoders.json` file defining the register values applied to each
+  encoder (see [config/README.md](config/README.md)). Calibration fails if it
+  is missing.
 
 ## Installation
 
@@ -67,10 +70,10 @@ encoder's EEPROM.
      ```
      ```bash
      python __main__.py \
-     poetry run python __main__.py \
          --interface "\Device\NPF_{YOUR-ADAPTER-GUID}" \
          --dictionary path/to/drive.xdf \
          --encoder both
+     ```
 
 ### Key options
 
@@ -78,6 +81,7 @@ encoder's EEPROM.
 |-----------------------|---------|----------------------------------------------|
 | `--interface`         | —       | EtherCAT network interface name (required)   |
 | `--dictionary`        | —       | Path to XDF dictionary file (required)       |
+| `--config`            | `None`  | Path to an XCF file loaded onto the drive before calibration |
 | `--encoder`           | `both`  | Which encoder(s): `1`, `2`, or `both`        |
 | `--max-iterations`    | `10`     | Maximum analog calibration iterations        |
 | `--gen-frequency`     | `0.4`   | Saw-tooth generator frequency (Hz)           |
@@ -126,7 +130,9 @@ pytest tests/ -m hardware --setup=tests.setups.tests_setup.MY_SETUP
 | `ic_haus_magnetic_encoder_calibration/encoder.py` | Single encoder BiSS operations |
 | `ic_haus_magnetic_encoder_calibration/motor_control.py` | Motor control with FSoE support |
 | `ic_haus_magnetic_encoder_calibration/ic_haus_registers.py` | iC-MU register definitions |
+| `ic_haus_magnetic_encoder_calibration/config_loader.py` | Loads encoder register config from `config/encoders.json` |
 | `ic_haus_magnetic_encoder_calibration/plotting.py` | Diagnostic plots |
+| `config/encoders.json` | Per-encoder register configuration (required) |
 | `architecture.md` | Detailed architecture documentation |
 
 ## Further reading
