@@ -116,16 +116,6 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--force-enac",
-        type=_parse_bool,
-        default=True,
-        metavar="BOOL",
-        help=(
-            "Force ENAC - Amplitude Control mode to True after calibration, "
-            "even if calibration fails (default: true)"
-        ),
-    )
-    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("calibration_output"),
@@ -209,7 +199,6 @@ def main() -> None:
         gen_current=args.gen_current,
         pdo_rate=args.pdo_rate_ms / 1000.0,
         capture_duration=args.capture_duration,
-        force_enac=args.force_enac,
         output_dir=args.output_dir,
         save_raw_plots=args.save_raw_plots,
         save_residual_bar_plots=args.save_residual_bar_plots,

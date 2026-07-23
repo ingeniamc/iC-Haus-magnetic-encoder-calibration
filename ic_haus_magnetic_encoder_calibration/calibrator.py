@@ -424,7 +424,6 @@ class EncoderCalibrator:
         gen_current: Quadrature current target in amps.
         pdo_rate: PDO cycle time in seconds.
         capture_duration: Data capture duration per iteration in seconds.
-        force_enac: If True, forces ENAC after calibration, even if it fails.
         output_dir: Directory for diagnostic plot PNGs.
         interactive_plots: If True, show plots interactively instead of saving.
         save_raw_plots: If True, save raw waveform plots for each iteration.
@@ -443,7 +442,6 @@ class EncoderCalibrator:
         gen_current: float = DEFAULT_GEN_CURRENT,
         pdo_rate: float = DEFAULT_PDO_RATE_S,
         capture_duration: float = DEFAULT_CAPTURE_DURATION_S,
-        force_enac: bool = True,
         output_dir: Optional[Path] = None,
         interactive_plots: bool = False,
         save_raw_plots: bool = False,
@@ -473,7 +471,10 @@ class EncoderCalibrator:
         self._pdo_buffer: deque[list[int]] = deque()
         self._pdo_lock = threading.Lock()
         self._pdo_collecting = False
-        self._force_enac = force_enac
+        # Post-calibration encoder configurations
+        self._encoders_post_calibration_config: dict[int, EncoderRegisterConfig] = (
+            load_encoders_configuration_file()
+        )
 
     # -- Encoder management --
 
