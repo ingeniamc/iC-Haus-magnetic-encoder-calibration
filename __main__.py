@@ -201,7 +201,6 @@ def main() -> None:
     encoder_sensor_types = {1: SensorType.ABS1, 2: SensorType.SSI2}
     encoder_numbers = [1, 2] if args.encoder == "both" else [int(args.encoder)]
     for num in encoder_numbers:
-        # TODO: Load encoder configuration from JSON file here
         calibrator.add_encoder(encoder_sensor_types[num])
 
     calibrator.configure_drive_encoders()
