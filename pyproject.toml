@@ -11,7 +11,7 @@ requires-python = ">=3.9,<3.13"
 dependencies = [
     "ingeniamotion[fsoe]>=0.10.2",
     "matplotlib>=3.9",
-    "mu-3sl==3.4.2.1",
+    "mu-3sl==3.4.3.1.post2",
     "numpy>=2.0",
 ]
 
@@ -48,7 +48,7 @@ priority = "supplemental"
 
 [tool.poetry.dependencies]
 # NOTE: when bumping mu-3sl version, also update [project] dependencies above and libs/README.md
-mu-3sl = {path = "libs/mu_3sl-3.4.2.1-py3-none-any.whl"}
+mu-3sl = {path = "libs/mu_3sl-3.4.3.1.post2-py3-none-any.whl"}
 
 # Dependencies to run poe tasks
 [tool.poetry.group.dev]
