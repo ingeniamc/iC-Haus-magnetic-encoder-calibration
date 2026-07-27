@@ -6,6 +6,7 @@ from ic_haus_magnetic_encoder_calibration.calibrator import (
     EncoderCalibrator,
     _SingleEncoderCalibration,
 )
+from ic_haus_magnetic_encoder_calibration.config_loader import EncoderRegisterConfig
 from ic_haus_magnetic_encoder_calibration.encoder import split_raw_payload
 
 
@@ -27,7 +28,8 @@ class TestSplitRawPayload:
 
 
 @pytest.fixture
-def calibrator(mock_mc, tmp_path):
+def calibrator(mock_mc, mock_encoder_config, tmp_path):
+    _ = mock_encoder_config  # ensure fixture is applied
     return EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
 
 
@@ -215,6 +217,7 @@ def mu_3sl_mock(mocker):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("mock_encoder_config")
 class TestCalibrateConvergence:
     """Core calibration flow: convergence detection, iteration, analog adjustment."""
 
@@ -301,6 +304,7 @@ class TestCalibrateConvergence:
         )
 
 
+@pytest.mark.usefixtures("mock_encoder_config")
 class TestCalibrateBothEncoders:
     """Two encoders: both converge or mixed results."""
 
@@ -400,8 +404,26 @@ class TestCalibrateBothEncoders:
         assert results[2].success is False
 
 
+@pytest.mark.usefixtures("mock_encoder_config")
 class TestCalibrateRestore:
     """Config is always restored: on success, non-convergence, and exception."""
+
+    def test_applies_config_before_calibration(
+        self, mock_mc, mocker, mu_3sl_mock, tmp_path
+    ) -> None:
+        """apply_config() is called during save_state (before calibration loop)."""
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        enc = cal.add_encoder(SensorType.ABS1)
+        _patch_encoder(enc, mocker)
+        mocker.patch.object(enc, "apply_config")
+
+        conv = _make_converged_analyze_result(mocker)
+        conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
+        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv])
+
+        cal.calibrate()
+
+        enc.apply_config.assert_called_once()
 
     def test_restores_on_success(self, mock_mc, mocker, mu_3sl_mock, tmp_path) -> None:
         cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
@@ -420,6 +442,25 @@ class TestCalibrateRestore:
 
         enc.set_drive_config.assert_called_with(saved_drive)
         enc.set_ic_config.assert_called_with(saved_ic)
+
+    def test_restores_on_non_convergence(self, mock_mc, mocker, mu_3sl_mock, tmp_path) -> None:
+        """Drive and iC-MU config are restored even when calibration does not converge."""
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        enc = cal.add_encoder(SensorType.ABS1)
+        _patch_encoder(enc, mocker)
+        saved_drive = mocker.MagicMock(name="SavedDrive")
+        saved_ic = mocker.MagicMock(name="SavedIC")
+        enc.get_drive_config.return_value = saved_drive
+        enc.get_ic_config.return_value = saved_ic
+
+        not_conv = _make_not_converged_analyze_result(mocker)
+        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [not_conv, not_conv, not_conv])
+
+        results = cal.calibrate()
+
+        assert results[1].success is False
+        enc.set_ic_config.assert_called_with(saved_ic)
+        enc.set_drive_config.assert_called_with(saved_drive)
 
     def test_restores_on_exception(self, mock_mc, mocker, mu_3sl_mock, tmp_path) -> None:
         cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
@@ -455,12 +496,96 @@ class TestCalibrateRestore:
         enc.set_drive_config.assert_called_with(saved_drive)
 
 
+@pytest.mark.usefixtures("mock_encoder_config")
+class TestAddEncoderConfig:
+    """Verify that encoders receive their configuration from the loader."""
+
+    def test_add_encoder_loads_config(self, mock_mc, tmp_path) -> None:
+        """add_encoder() assigns the loaded config to the encoder instance."""
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        enc = cal.add_encoder(SensorType.ABS1)
+
+        # Check register configuration
+        assert enc._config is not None
+        assert enc._config.out_msb == 0x05
+        assert enc._config.out_lsb == 0x00
+        assert enc._config.mode_st == 0x00
+        assert enc._config.enac == 0x01
+        assert enc._config.cfgew == 0xFF
+        assert enc._config.filt == 0x03
+
+    def test_add_encoder_both_get_same_config(self, mock_mc, tmp_path) -> None:
+        """Both encoders receive the same config from the loaded dict."""
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        enc1 = cal.add_encoder(SensorType.ABS1)
+        enc2 = cal.add_encoder(SensorType.SSI2)
+
+        assert enc1._config.out_msb == enc2._config.out_msb == 0x05
+        assert enc1._config.cfgew == enc2._config.cfgew == 0xFF
+
+    def test_add_encoder_raises_without_config(self, mock_mc, mocker, tmp_path) -> None:
+        """add_encoder() raises if the encoder has no loaded config."""
+        # Override the mock to return only encoder 2's config (no config for encoder 1)
+        config_enc2 = EncoderRegisterConfig(
+            out_msb=0x05, out_lsb=0x00, mode_st=0x00, enac=0x01, cfgew=0xFF, filt=0x03
+        )
+        mocker.patch(
+            "ic_haus_magnetic_encoder_calibration.calibrator.load_encoders_configuration_file",
+            return_value={2: config_enc2},
+        )
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+
+        with pytest.raises(ValueError, match="Encoder 1 has no valid config"):
+            cal.add_encoder(SensorType.ABS1)
+
+    def test_add_encoder_different_configs_per_encoder(self, mock_mc, mocker, tmp_path) -> None:
+        """Different encoders can have different configurations loaded."""
+        # Create different configs for each encoder
+        config_enc1 = EncoderRegisterConfig(
+            out_msb=0x05, out_lsb=0x00, mode_st=0x00, enac=0x01, cfgew=0xFF, filt=0x03
+        )
+        config_enc2 = EncoderRegisterConfig(
+            out_msb=0x0A, out_lsb=0x01, mode_st=0x02, enac=0x02, cfgew=0xAA, filt=0x05
+        )
+        mocker.patch(
+            "ic_haus_magnetic_encoder_calibration.calibrator.load_encoders_configuration_file",
+            return_value={1: config_enc1, 2: config_enc2},
+        )
+
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        enc1 = cal.add_encoder(SensorType.ABS1)
+        enc2 = cal.add_encoder(SensorType.SSI2)
+
+        # Encoder 1 config
+        assert enc1._config is not None
+        assert enc1._config.out_msb == 0x05
+        assert enc1._config.out_lsb == 0x00
+        assert enc1._config.mode_st == 0x00
+        assert enc1._config.enac == 0x01
+        assert enc1._config.cfgew == 0xFF
+        assert enc1._config.filt == 0x03
+
+        # Encoder 2 config (different)
+        assert enc2._config is not None
+        assert enc2._config.out_msb == 0x0A
+        assert enc2._config.out_lsb == 0x01
+        assert enc2._config.mode_st == 0x02
+        assert enc2._config.enac == 0x02
+        assert enc2._config.cfgew == 0xAA
+        assert enc2._config.filt == 0x05
+
+        # Verify they are different
+        assert enc1._config.out_msb != enc2._config.out_msb
+        assert enc1._config.cfgew != enc2._config.cfgew
+
+
 # ---------------------------------------------------------------------------
 #  Hardware integration tests (require a physical drive + encoder)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.hardware
+@pytest.mark.usefixtures("mock_encoder_config")
 class TestCalibrationHardware:
     def test_calibrate_both_encoders(self, mc) -> None:
         """Both encoders converge from zero gains."""

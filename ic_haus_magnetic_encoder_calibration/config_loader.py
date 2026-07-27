@@ -49,7 +49,7 @@ class EncoderRegisterConfig:
     filt: int  # Filter configuration (FILT) register value
 
     @classmethod
-    def from_dict(cls, data: dict[Any]) -> "EncoderRegisterConfig":
+    def from_dict(cls, data: dict[Any, Any]) -> "EncoderRegisterConfig":
         """Create from JSON dict with hex string values.
 
         Args:
@@ -95,7 +95,7 @@ class EncoderRegisterConfig:
         """Yield (register, field, value) for each configurable register.
 
         - register: ICHausRegister object to write to.
-        - field: ICHausRegisterField object if writing a specific bit-field, or None for whole register.
+        - field: ICHausRegisterField object if writing specific bit-field, None for whole register.
         - value: Integer value to write to the register or field.
 
         Returns:
@@ -152,6 +152,10 @@ def load_encoders_configuration_file(
 ) -> dict[int, EncoderRegisterConfig]:
     """Load encoder configurations from JSON file.
 
+    Loader validates the JSON format but does not enforce which encoders must be present.
+    Caller must check that the required encoder configurations are available.
+    If a configuration for an encoder is invalid, it will be skipped with a warning.
+
     Expected JSON structure:
     ```json
     {
@@ -177,7 +181,7 @@ def load_encoders_configuration_file(
     Raises:
         FileNotFoundError: If config file does not exist.
         json.JSONDecodeError: If config file is not valid JSON.
-        ValueError: If configuration format or values are invalid.
+        ValueError: If configuration format is invalid or no valid configurations are found.
     """
     if not config_file.exists():
         msg = f"Encoder config file not found: {config_file}"
@@ -196,17 +200,18 @@ def load_encoders_configuration_file(
         msg = f"Unsupported config version: {version}, expected {JSON_VERSION}"
         raise ValueError(msg)
 
-    configs = {}
+    configs: dict[int, EncoderRegisterConfig] = {}
     for enc_key in ["1", "2"]:
         if enc_key in data:
             enc_num = int(enc_key)
             try:
                 configs[enc_num] = EncoderRegisterConfig.from_dict(data[enc_key])
-            except ValueError:
-                configs[enc_num] = None
+            except ValueError as e:
+                # Log the error but continue processing other encoders
+                logger.warning(f"Invalid configuration for encoder {enc_num}: {e}")
 
     if not configs:
         msg = f"No valid encoder configs found in {config_file}"
         raise ValueError(msg)
 
-    return configs
+    return configs  # may be empty — caller decides what's required

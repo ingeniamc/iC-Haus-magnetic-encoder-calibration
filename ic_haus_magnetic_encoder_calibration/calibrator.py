@@ -463,11 +463,23 @@ class EncoderCalibrator:
         self._pdo_lock = threading.Lock()
         self._pdo_collecting = False
         # Post-calibration encoder configurations
-        self._encoders_post_calibration_config: dict[int, EncoderRegisterConfig] = (
-            load_encoders_configuration_file()
-        )
+        self.load_encoder_configurations()
 
     # -- Encoder management --
+    def load_encoder_configurations(self) -> None:
+        """Load encoder configurations from the default JSON file.
+
+        Raises:
+            FileNotFoundError: If the config file does not exist.
+            ValueError: If the configuration format or values are invalid.
+            json.JSONDecodeError: If the config file is not valid JSON.
+
+        """
+        try:
+            self._encoders_post_calibration_config = load_encoders_configuration_file()
+        except Exception as e:
+            logger.error(f"Failed to load encoder configurations: {e}")
+            raise
 
     def add_encoder(self, sensor_type: SensorType) -> Encoder:
         """Create and register an Encoder for the given sensor type.
@@ -485,12 +497,15 @@ class EncoderCalibrator:
 
         """
         # Check for config
-        enc_config = self._encoders_post_calibration_config.get(
-            _SENSOR_TYPE_TO_ENCODER[sensor_type], {}
-        )
-        if not enc_config:
-            raise ValueError(f"Encoder {sensor_type} has no valid config. Review encoders.json.")
-        enc = Encoder(self._mc, sensor_type, axis=self._axis, config=enc_config)
+        enc_configs = self._encoders_post_calibration_config
+        if not enc_configs:
+            msg = "Encoder configurations not loaded or no valid configurations found."
+            raise ValueError(msg)
+        enc_num = _SENSOR_TYPE_TO_ENCODER.get(sensor_type)
+        if enc_num not in enc_configs:
+            raise ValueError(f"Encoder {enc_num} has no valid config. Review encoders.json.")
+        encoder_config = enc_configs[enc_num]
+        enc = Encoder(self._mc, sensor_type, axis=self._axis, config=encoder_config)
         self._encoders.append(enc)
         logger.info(f"Registered encoder {enc.number} for calibration.")
         return enc
