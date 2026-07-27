@@ -422,6 +422,7 @@ class EncoderCalibrator:
         save_residual_bar_plots: If True, save residual bar plots for each iteration.
         save_trend_plot: If True, save residuals trend plot (one per encoder).
         save_json: If True, save iteration logs as JSON files.
+        config_path: Optional path to the encoder configuration JSON file.
     """
 
     def __init__(
@@ -440,6 +441,7 @@ class EncoderCalibrator:
         save_residual_bar_plots: bool = False,
         save_trend_plot: bool = True,
         save_json: bool = True,
+        config_path: Optional[Path] = None,
     ) -> None:
         self._mc = mc
         self._axis = axis
@@ -463,11 +465,14 @@ class EncoderCalibrator:
         self._pdo_lock = threading.Lock()
         self._pdo_collecting = False
         # Post-calibration encoder configurations
-        self.load_encoder_configurations()
+        self.load_encoder_configurations(config_path)
 
     # -- Encoder management --
-    def load_encoder_configurations(self) -> None:
+    def load_encoder_configurations(self, config_path: Optional[Path] = None) -> None:
         """Load encoder configurations from the default JSON file.
+
+        Args:
+            config_path: Optional path to the encoder configuration JSON file.
 
         Raises:
             FileNotFoundError: If the config file does not exist.
@@ -476,7 +481,7 @@ class EncoderCalibrator:
 
         """
         try:
-            self._encoders_post_calibration_config = load_encoders_configuration_file()
+            self._encoders_post_calibration_config = load_encoders_configuration_file(config_path)
         except Exception as e:
             logger.error(f"Failed to load encoder configurations: {e}")
             raise

@@ -17,7 +17,7 @@ from .ic_haus_registers import (
 logger = logging.getLogger(__name__)
 
 # JSON file path
-DEFAULT_ENCODER_CONFIG_PATH = Path("config/encoders.json")
+DEFAULT_ENCODER_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "encoders.json"
 
 # JSON versioning for encoder register config files
 JSON_VERSION_KEY = "version"

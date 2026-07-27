@@ -81,7 +81,8 @@ encoder's EEPROM.
 |-----------------------|---------|----------------------------------------------|
 | `--interface`         | —       | EtherCAT network interface name (required)   |
 | `--dictionary`        | —       | Path to XDF dictionary file (required)       |
-| `--config`            | `None`  | Path to an XCF file loaded onto the drive before calibration |
+| `--drive-config`      | `None`  | Path to an XCF file loaded onto the drive before calibration |
+| `--encoder-config`    | `None`  | Path to a JSON file loaded onto the encoders after the calibration |
 | `--encoder`           | `both`  | Which encoder(s): `1`, `2`, or `both`        |
 | `--max-iterations`    | `10`     | Maximum analog calibration iterations        |
 | `--gen-frequency`     | `0.4`   | Saw-tooth generator frequency (Hz)           |
