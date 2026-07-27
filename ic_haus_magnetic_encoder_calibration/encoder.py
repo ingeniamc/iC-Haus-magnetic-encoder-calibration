@@ -13,7 +13,7 @@ a BiSS channel on a Novanta/Ingenia drive. It handles:
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Union
 
 import mu_3sl_interface as mu_3sl
 from ingeniamotion import MotionController
@@ -225,8 +225,15 @@ class Encoder:
         )
         return raw
 
-    def _write_ic(self, reg: ICHausRegister, value: int) -> None:
-        """Write an 8-bit value to an iC-MU register via BiSS bidirectional."""
+    def _write_ic(self, reg: Union[ICHausRegister, ICHausRegisterField], value: int) -> None:
+        """Write an 8-bit value to an iC-MU register via BiSS bidirectional or an iC-MU register field."""
+        field = None
+        if isinstance(reg, ICHausRegisterField):
+            # If a field is passed, use it to mask/shift the value
+            field = reg
+            register = field.register
+            value = field.insert(self._read_ic(register), value)
+            reg = register
         regs = self._regs
         ax = self._axis
         self._mc.communication.set_register(regs.itf_ctl, BissAction.NO_ACTION, axis=ax)
@@ -236,29 +243,6 @@ class Encoder:
         # Let the BiSS transaction settle before any subsequent operations.
         # They could potentially depend on the new register value, so it's safer to wait here
         time.sleep(_BISS_SETTLE_S)
-
-    def _write_ic_field(
-        self,
-        register: ICHausRegister,
-        register_field: ICHausRegisterField,
-        value: int,
-    ) -> None:
-        """Write a single bit-field via read-modify-write.
-
-        Only the specified field is modified; other bits in the register remain unchanged.
-        Write is only performed if the new value differs from the current value.
-
-        Args:
-            register: ICHausRegister object to write to.
-            register_field: ICHausRegisterField object specifying the field to modify.
-            value: Integer value to write to the field.
-
-
-        """
-        raw = self._read_ic(register)
-        new_raw = register_field.insert(raw, value)
-        if new_raw != raw:
-            self._write_ic(register, new_raw)
 
     def _read_ic_field(
         self,
@@ -366,13 +350,15 @@ class Encoder:
 
     def apply_config(self) -> None:
         """Apply iC-MU configuration register values previously loaded from a JSON file."""
-        for register, register_field, value in self._config.register_writes():
-            if register_field is None:
-                self._write_ic(register, value)
+        for item, value in self._config.register_writes():
+            self._write_ic(item, value)
+            # item can be a field or a register; get the appropriate name for logging
+            if isinstance(item, ICHausRegisterField):
+                display_name = f"{item.register.name}.{item.name}"
             else:
-                self._write_ic_field(register, register_field, value)
+                display_name = item.name
             logger.debug(
-                f"Encoder {self._number}: {register.name} = 0x{value:02x}",
+                f"Encoder {self._number}: {display_name} = 0x{value:02x}",
             )
         logger.info(f"Encoder {self._number}: configuration applied ({self._config})")
 
@@ -388,22 +374,22 @@ class Encoder:
             Number of master periods (2^MPC).
         """
         # Enable analog calibration (ENAC bit)
-        self._write_ic_field(ENAC, ENAC.field("enac"), _CALIB_ENAC)
+        self._write_ic(ENAC.field("enac"), _CALIB_ENAC)
 
         # Set interface mode to BiSS
-        self._write_ic_field(MODEA_MODEB, MODEA_MODEB.field("modea"), _CALIB_MODEA_BISS)
+        self._write_ic(MODEA_MODEB.field("modea"), _CALIB_MODEA_BISS)
 
         # Configure output shift register length:
         # OUT_MSB=0x0E selects bit 27 as the MSB (14 master + 14 nonius = 28 bits)
         # OUT_ZERO=0x00 — no padding zeros (BiSS doesn't need them; SPI uses 0x04)
-        self._write_ic_field(OUT_MSB_ZERO, OUT_MSB_ZERO.field("out_msb"), _CALIB_OUT_MSB)
-        self._write_ic_field(OUT_MSB_ZERO, OUT_MSB_ZERO.field("out_zero"), _CALIB_OUT_ZERO_BISS)
+        self._write_ic(OUT_MSB_ZERO.field("out_msb"), _CALIB_OUT_MSB)
+        self._write_ic(OUT_MSB_ZERO.field("out_zero"), _CALIB_OUT_ZERO_BISS)
 
         # Select raw master+nonius track output:
         # MODE_ST=0x02 selects raw analog data (required for calibration)
         # OUT_LSB=0x00 starts output from bit 0 (no truncation)
-        self._write_ic_field(OUT_LSB_ST, OUT_LSB_ST.field("mode_st"), _CALIB_MODE_ST)
-        self._write_ic_field(OUT_LSB_ST, OUT_LSB_ST.field("out_lsb"), _CALIB_OUT_LSB)
+        self._write_ic(OUT_LSB_ST.field("mode_st"), _CALIB_MODE_ST)
+        self._write_ic(OUT_LSB_ST.field("out_lsb"), _CALIB_OUT_LSB)
 
         # Clear test register
         self._write_ic(TEST, _CALIB_TEST)
@@ -416,7 +402,7 @@ class Encoder:
         mpc_val = self._read_ic_field(MPC, MPC.field("mpc"))
         if mpc_val == 0x0C:
             # MPC = 12 not allowed for raw data
-            self._write_ic_field(MPC, MPC.field("mpc"), _CALIB_MPC)
+            self._write_ic(MPC.field("mpc"), _CALIB_MPC)
             mpc_val = _CALIB_MPC
 
         # Configure drive frame for calibration

@@ -2,7 +2,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 from .ic_haus_registers import (
     CFGEW,
@@ -10,7 +10,6 @@ from .ic_haus_registers import (
     FILT,
     OUT_LSB_ST,
     OUT_MSB_ZERO,
-    ICHausRegister,
     ICHausRegisterField,
 )
 
@@ -89,25 +88,22 @@ class EncoderRegisterConfig:
             msg = f"Invalid register value in config: {e}"
             raise ValueError(msg) from e
 
-    def register_writes(
-        self,
-    ) -> list[tuple[ICHausRegister, Optional[ICHausRegisterField], int]]:
-        """Yield (register, field, value) for each configurable register.
+    def register_writes(self) -> list[tuple[ICHausRegisterField, int]]:
+        """Return (field, value) for each configurable field.
 
-        - register: ICHausRegister object to write to.
-        - field: ICHausRegisterField object if writing specific bit-field, None for whole register.
-        - value: Integer value to write to the register or field.
+        Each field knows its parent register via the backref, so register
+        is not needed here.
 
         Returns:
-            List of tuples for each register to write.
+        List of (field, value) tuples for writing to hardware.
         """
         return [
-            (OUT_MSB_ZERO, OUT_MSB_ZERO.field("out_msb"), self.out_msb),
-            (OUT_LSB_ST, OUT_LSB_ST.field("out_lsb"), self.out_lsb),
-            (OUT_LSB_ST, OUT_LSB_ST.field("mode_st"), self.mode_st),
-            (ENAC, ENAC.field("enac"), self.enac),
-            (CFGEW, None, self.cfgew),
-            (FILT, FILT.field("filt"), self.filt),
+            (OUT_MSB_ZERO.field("out_msb"), self.out_msb),
+            (OUT_LSB_ST.field("out_lsb"), self.out_lsb),
+            (OUT_LSB_ST.field("mode_st"), self.mode_st),
+            (ENAC.field("enac"), self.enac),
+            (CFGEW, self.cfgew),  # whole register, no field
+            (FILT.field("filt"), self.filt),
         ]
 
     def __str__(self) -> str:

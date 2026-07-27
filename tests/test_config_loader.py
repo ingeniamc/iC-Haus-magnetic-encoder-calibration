@@ -80,32 +80,38 @@ class TestFromDict:
 
 
 class TestRegisterWrites:
-    """Test that register_writes() returns correct register/field/value tuples."""
+    """Test that register_writes() returns correct field/register and value tuples."""
 
     def test_out_msb_targets_out_msb_zero_field(self) -> None:
         """OUT_MSB must target the out_msb field of OUT_MSB_ZERO (0x11)."""
         cfg = EncoderRegisterConfig.from_dict(_valid_dict())
         writes = cfg.register_writes()
 
-        out_msb_write = next(w for w in writes if w[2] == cfg.out_msb and w[0] is OUT_MSB_ZERO)
-        register, field, value = out_msb_write
-        assert register is OUT_MSB_ZERO
-        assert field is OUT_MSB_ZERO.field("out_msb")  # bits 0:4, not the whole reg
+        out_msb_write = next(
+            (f, v) for f, v in writes if v == cfg.out_msb and f is OUT_MSB_ZERO.field("out_msb")
+        )
+        field, value = out_msb_write
+        assert field is OUT_MSB_ZERO.field("out_msb")
+        assert field.register is OUT_MSB_ZERO
         assert field is not OUT_MSB_ZERO.field("out_zero")
         assert value == 0x05
 
     def test_out_lsb_and_mode_st_target_out_lsb_st(self) -> None:
         """OUT_LSB and MODE_ST must target the correct fields of OUT_LSB_ST."""
         cfg = EncoderRegisterConfig.from_dict(_valid_dict())
-        targets = {(r, f) for r, f, _ in cfg.register_writes()}
-        assert (OUT_LSB_ST, OUT_LSB_ST.field("out_lsb")) in targets
-        assert (OUT_LSB_ST, OUT_LSB_ST.field("mode_st")) in targets
+        writes = cfg.register_writes()
+
+        fields = {f for f, _ in writes}
+        assert OUT_LSB_ST.field("out_lsb") in fields
+        assert OUT_LSB_ST.field("mode_st") in fields
 
     def test_cfgew_writes_whole_register(self) -> None:
         """CFGEW must write the whole register, not a field."""
         cfg = EncoderRegisterConfig.from_dict(_valid_dict())
-        cfgew_write = next(w for w in cfg.register_writes() if w[0] is CFGEW)
-        assert cfgew_write[1] is None  # whole-register write
+        cfgew_write = next((f, v) for f, v in cfg.register_writes() if f is CFGEW)
+        register, value = cfgew_write
+        assert register is CFGEW  # whole-register write (passed directly, not a field)
+        assert value == 0x00
 
 
 class TestLoadEncodersConfigurationFile:
