@@ -55,7 +55,7 @@ pipeline {
                 stage('Fetch local dependencies') {
                     steps {
                         script {
-                            venvManager.runInWorkingFolder("pip download mu-3sl==3.4.2.1 --no-deps -d libs --index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com")
+                            venvManager.runInWorkingFolder("pip download mu-3sl==3.4.3.1.post2 --no-deps -d libs --index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com")
                         }
                     }
                 }
