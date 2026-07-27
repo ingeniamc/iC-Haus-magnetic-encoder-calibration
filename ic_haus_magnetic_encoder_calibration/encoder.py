@@ -245,6 +245,9 @@ class Encoder:
     ) -> None:
         """Write a single bit-field via read-modify-write.
 
+        Only the specified field is modified; other bits in the register remain unchanged.
+        Write is only performed if the new value differs from the current value.
+
         Args:
             register: ICHausRegister object to write to.
             register_field: ICHausRegisterField object specifying the field to modify.
@@ -253,7 +256,9 @@ class Encoder:
 
         """
         raw = self._read_ic(register)
-        self._write_ic(register, register_field.insert(raw, value))
+        new_raw = register_field.insert(raw, value)
+        if new_raw != raw:
+            self._write_ic(register, new_raw)
 
     def _read_ic_field(
         self,

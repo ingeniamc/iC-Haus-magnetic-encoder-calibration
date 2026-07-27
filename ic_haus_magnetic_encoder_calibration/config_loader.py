@@ -2,7 +2,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, Union
 
 from .ic_haus_registers import (
     CFGEW,
@@ -32,16 +32,6 @@ JSON_CFGEW_KEY = "CFGEW"
 JSON_FILT_KEY = "FILT"
 
 
-@dataclass(frozen=True)
-class RegisterTarget:
-    """Links a config key to a register and optional field."""
-
-    register: ICHausRegister
-    register_field: Optional[ICHausRegisterField] = (
-        None  # Register bitfield, or None for whole register
-    )
-
-
 @dataclass
 class EncoderRegisterConfig:
     """Post-calibration iC-MU encoder register configuration.
@@ -59,7 +49,7 @@ class EncoderRegisterConfig:
     filt: int  # Filter configuration (FILT) register value
 
     @classmethod
-    def from_dict(cls, data: dict) -> "EncoderRegisterConfig":
+    def from_dict(cls, data: dict[Any]) -> "EncoderRegisterConfig":
         """Create from JSON dict with hex string values.
 
         Args:
@@ -129,7 +119,7 @@ class EncoderRegisterConfig:
         )
 
 
-def _parse_hex_or_int(value: str | int) -> int:
+def _parse_hex_or_int(value: Union[str, int]) -> int:
     """Parse a value that can be either a hex string or integer.
 
     Args:
@@ -157,9 +147,8 @@ def _parse_hex_or_int(value: str | int) -> int:
     raise ValueError(msg)
 
 
-@staticmethod
 def load_encoders_configuration_file(
-    config_file: Optional[Path] = DEFAULT_ENCODER_CONFIG_PATH,
+    config_file: Path = DEFAULT_ENCODER_CONFIG_PATH,
 ) -> dict[int, EncoderRegisterConfig]:
     """Load encoder configurations from JSON file.
 
