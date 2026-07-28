@@ -1,5 +1,6 @@
 import json
 import logging
+from unittest.mock import mock_open, patch
 
 import pytest
 
@@ -118,6 +119,33 @@ class TestRegisterWrites:
 class TestLoadEncodersConfigurationFile:
     """Test loading encoder configurations from JSONfile with load_encoders_configuration_file()."""
 
+    def test_not_specified_path_loads_default(self) -> None:
+        """If no path is specified, the default config path is used."""
+        # Mock file operations to verify DEFAULT_ENCODER_CONFIG_PATH is used
+        mock_data = json.dumps({"version": "1.0", "1": _valid_dict()})
+
+        with patch("builtins.open", mock_open(read_data=mock_data)) as mock_file:
+            configs = load_encoders_configuration_file()
+
+            # Verify that open() was called with DEFAULT_ENCODER_CONFIG_PATH
+            mock_file.assert_called_once()
+            opened_path = mock_file.call_args[0][0]
+            assert str(opened_path) == str(DEFAULT_ENCODER_CONFIG_PATH)
+            # Verify configs were loaded successfully
+            assert 1 in configs
+            assert configs[1].out_msb == 0x05
+
+    def test_default_config_path_points_to_workspace_root(self) -> None:
+        """DEFAULT_ENCODER_CONFIG_PATH should point to config/encoders.json at workspace root."""
+        # The path should end with "config/encoders.json"
+        assert DEFAULT_ENCODER_CONFIG_PATH.name == "encoders.json"
+        assert DEFAULT_ENCODER_CONFIG_PATH.parent.name == "config"
+        # And it should NOT be inside the ic_haus_magnetic_encoder_calibration package
+        path_parts = DEFAULT_ENCODER_CONFIG_PATH.parts
+        assert "ic_haus_magnetic_encoder_calibration" not in path_parts
+        # And the file should actually exist
+        assert DEFAULT_ENCODER_CONFIG_PATH.exists()
+
     def test_missing_file_raises(self, tmp_path) -> None:
         """Missing config file raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError):
@@ -201,14 +229,3 @@ class TestLoadEncodersConfigurationFile:
 
         with pytest.raises(ValueError, match="No valid encoder configs found"):
             load_encoders_configuration_file(path)
-
-    def test_default_config_path_points_to_workspace_root(self) -> None:
-        """DEFAULT_ENCODER_CONFIG_PATH should point to config/encoders.json at workspace root."""
-        # The path should end with "config/encoders.json"
-        assert DEFAULT_ENCODER_CONFIG_PATH.name == "encoders.json"
-        assert DEFAULT_ENCODER_CONFIG_PATH.parent.name == "config"
-        # And it should NOT be inside the ic_haus_magnetic_encoder_calibration package
-        path_parts = DEFAULT_ENCODER_CONFIG_PATH.parts
-        assert "ic_haus_magnetic_encoder_calibration" not in path_parts
-        # And the file should actually exist
-        assert DEFAULT_ENCODER_CONFIG_PATH.exists()

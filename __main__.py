@@ -13,6 +13,7 @@ from ic_haus_magnetic_encoder_calibration.calibrator import (
     DEFAULT_PDO_RATE_S,
     EncoderCalibrator,
 )
+from ic_haus_magnetic_encoder_calibration.config_loader import load_encoders_configuration_file
 from ic_haus_magnetic_encoder_calibration.motor_control import (
     DEFAULT_GEN_CURRENT,
     DEFAULT_GEN_FREQ,
@@ -220,13 +221,17 @@ def main() -> None:
         save_residual_bar_plots=args.save_residual_bar_plots,
         save_trend_plot=args.save_trend_plot,
         save_json=args.save_json,
-        config_path=args.encoder_config,
     )
+
+    # Load encoder configurations from JSON file if provided
+    encoder_configs = load_encoders_configuration_file(args.encoder_config)
 
     encoder_sensor_types = {1: SensorType.ABS1, 2: SensorType.SSI2}
     encoder_numbers = [1, 2] if args.encoder == "both" else [int(args.encoder)]
     for num in encoder_numbers:
-        calibrator.add_encoder(encoder_sensor_types[num])
+        if num not in encoder_configs:
+            raise ValueError(f"Encoder {num} has no valid config. Review encoders.json.")
+        calibrator.add_encoder(encoder_sensor_types[num], encoder_configs[num])
 
     calibrator.configure_drive_encoders()
 

@@ -21,12 +21,14 @@ def mock_mc(mocker):
 
 
 @pytest.fixture
-def mock_encoder_config(mocker):
-    """Provide valid encoder configs so EncoderCalibrator can be instantiated."""
+def mock_encoder_config():
+    """Provide a valid encoder config so Encoder can be instantiated.
+
+    Returns:
+        An EncoderRegisterConfig instance with valid register values.
+
+    """
     valid_config = EncoderRegisterConfig(
         out_msb=0x05, out_lsb=0x00, mode_st=0x00, enac=0x01, cfgew=0xFF, filt=0x03
     )
-    mocker.patch(
-        "ic_haus_magnetic_encoder_calibration.calibrator.load_encoders_configuration_file",
-        return_value={1: valid_config, 2: valid_config},
-    )
+    return valid_config

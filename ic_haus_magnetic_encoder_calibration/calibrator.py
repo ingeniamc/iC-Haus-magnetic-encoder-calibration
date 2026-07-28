@@ -26,11 +26,9 @@ from ingeniamotion.enums import SensorType
 
 from ic_haus_magnetic_encoder_calibration.config_loader import (
     EncoderRegisterConfig,
-    load_encoders_configuration_file,
 )
 
 from .encoder import (
-    _SENSOR_TYPE_TO_ENCODER,
     CalibrationResult,
     DriveFrameConfig,
     Encoder,
@@ -422,7 +420,6 @@ class EncoderCalibrator:
         save_residual_bar_plots: If True, save residual bar plots for each iteration.
         save_trend_plot: If True, save residuals trend plot (one per encoder).
         save_json: If True, save iteration logs as JSON files.
-        config_path: Optional path to the encoder configuration JSON file.
     """
 
     def __init__(
@@ -441,7 +438,6 @@ class EncoderCalibrator:
         save_residual_bar_plots: bool = False,
         save_trend_plot: bool = True,
         save_json: bool = True,
-        config_path: Optional[Path] = None,
     ) -> None:
         self._mc = mc
         self._axis = axis
@@ -464,35 +460,16 @@ class EncoderCalibrator:
         self._pdo_buffer: deque[list[int]] = deque()
         self._pdo_lock = threading.Lock()
         self._pdo_collecting = False
-        # Post-calibration encoder configurations
-        self.load_encoder_configurations(config_path)
 
     # -- Encoder management --
-    def load_encoder_configurations(self, config_path: Optional[Path] = None) -> None:
-        """Load encoder configurations from the default JSON file.
-
-        Args:
-            config_path: Optional path to the encoder configuration JSON file.
-
-        Raises:
-            FileNotFoundError: If the config file does not exist.
-            ValueError: If the configuration format or values are invalid.
-            json.JSONDecodeError: If the config file is not valid JSON.
-
-        """
-        try:
-            self._encoders_post_calibration_config = load_encoders_configuration_file(config_path)
-        except Exception as e:
-            logger.error(f"Failed to load encoder configurations: {e}")
-            raise
-
-    def add_encoder(self, sensor_type: SensorType) -> Encoder:
-        """Create and register an Encoder for the given sensor type.
+    def add_encoder(self, sensor_type: SensorType, sensor_config: EncoderRegisterConfig) -> Encoder:
+        """Create and register an Encoder for the given sensor type and configuration.
 
         The encoder channel number is derived from the sensor type.
 
         Args:
             sensor_type: Drive feedback sensor type for this encoder.
+            sensor_config: Encoder register configuration for this encoder.
 
         Returns:
             The newly created Encoder instance.
@@ -501,16 +478,8 @@ class EncoderCalibrator:
             ValueError: If the sensor type has no valid config.
 
         """
-        # Check for config
-        enc_configs = self._encoders_post_calibration_config
-        if not enc_configs:
-            msg = "Encoder configurations not loaded or no valid configurations found."
-            raise ValueError(msg)
-        enc_num = _SENSOR_TYPE_TO_ENCODER.get(sensor_type)
-        if enc_num not in enc_configs:
-            raise ValueError(f"Encoder {enc_num} has no valid config. Review encoders.json.")
-        encoder_config = enc_configs[enc_num]
-        enc = Encoder(self._mc, sensor_type, axis=self._axis, config=encoder_config)
+        # Add the encoder to the calibrator's list and return it
+        enc = Encoder(self._mc, sensor_type, axis=self._axis, config=sensor_config)
         self._encoders.append(enc)
         logger.info(f"Registered encoder {enc.number} for calibration.")
         return enc
