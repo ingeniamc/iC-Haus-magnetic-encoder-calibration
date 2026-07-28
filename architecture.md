@@ -140,9 +140,10 @@ the frame geometry change.  Switching from the normal frame (27 bits) to the
 calibration raw frame (36 bits) causes transient CRC mismatches; a high
 tolerance prevents the drive from freezing POS_VALUE during the transition.
 
-Additionally, `ensure_normal_mode()` is called at the start of every
-calibration run to detect and recover an encoder left in RAW mode from a
-previous interrupted calibration (e.g., `OUT_MSB = 0x0E` instead of `0x06`).
+At the start of every calibration run, `apply_config()` writes the register
+values from `config/encoders.json` (including the desired `CFGEW`, `OUT_MSB`,
+and `MODE_ST`), which also restores an encoder left in RAW mode by a previous
+interrupted calibration (e.g., `OUT_MSB = 0x0E` instead of `0x06`).
 
 ### Internal CRC Checksums (EEPROM)
 
@@ -167,6 +168,7 @@ flowchart TD
     MAIN["__main__.py<br/>CLI entry point<br/>(argparse)"]
     ICREG["ic_haus_registers.py<br/>iC-MU register descriptors<br/>ICHausRegister / ICHausRegisterField<br/>BissAction enum"]
     DRVREG["drive_encoder_registers.py<br/>DriveEncoderRegisters dataclass<br/>Drive register name mappings"]
+    CFG["config_loader.py<br/>EncoderRegisterConfig dataclass<br/>load_encoders_configuration_file()<br/>(reads config/encoders.json)"]
     ENC["encoder.py<br/>Encoder class<br/>Single encoder operations<br/>BiSS R/W, save/restore,<br/>CalibrationResult dataclass"]
     MOT["motor_control.py<br/>MotorControl class<br/>FSoE lifecycle, motor_spinning(),<br/>configure_encoders() + current ramp"]
     CAL["calibrator.py<br/>EncoderCalibrator class<br/>_SingleEncoderCalibration per-encoder state<br/>TPDO data acquisition, diagnostic plots"]
@@ -175,10 +177,11 @@ flowchart TD
     MU([mu_3sl — DLL wrapper — External])
     IM([ingeniamotion — External])
 
-    MAIN -->|"parses args, creates mc,<br/>configure_encoders()"| CAL
+    MAIN -->|"parses args, creates mc,<br/>configure_drive_encoders()"| CAL
     CAL -->|"orchestrates"| ENC
     CAL -->|"delegates motor ops"| MOT
     CAL -->|"diagnostic plots"| PLOT
+    CAL -->|"loads register config"| CFG
     MOT -->|"FSoE + motor control"| IM
     ENC -->|"uses chip register defs"| ICREG
     ENC -->|"uses drive register names"| DRVREG
@@ -193,16 +196,16 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CLI["**CLI** (__main__.py)<br/>--interface, --dictionary,<br/>--encoder 1|2|both, --axis,<br/>--gen-current, --gen-frequency,<br/>--max-iterations, --pdo-rate-ms,<br/>--capture-duration,<br/>--save-raw-plots, --save-residual-bar-plots,<br/>--save-trend-plot, --save-json"]
+    CLI["**CLI** (__main__.py)<br/>--interface, --dictionary,<br/>--slave-id, --encoder 1|2|both, --axis,<br/>--gen-current, --gen-frequency,<br/>--max-iterations, --pdo-rate-ms,<br/>--capture-duration,<br/>--save-raw-plots, --save-residual-bar-plots,<br/>--save-trend-plot, --save-json"]
 
     CLI --> CONNECT["Connect to drive via EtherCAT"]
     CONNECT --> CREATE["Create EncoderCalibrator<br/>(wraps MotorControl internally)<br/>Add Encoder(sensor_type) for each encoder"]
 
-    CREATE --> CONFIGURE["**configure_encoders()**<br/>Sensors: INTGEN (vel/pos/commu)<br/>+ enrolled encoder sensor types as<br/>auxiliary / reference feedback"]
+    CREATE --> CONFIGURE["**configure_drive_encoders()**<br/>Sensors: INTGEN (vel/pos/commu)<br/>+ enrolled encoder sensor types as<br/>auxiliary / reference feedback"]
 
     CONFIGURE --> CALIBRATE["**calibrator.calibrate()**"]
 
-    CALIBRATE --> SETUP["**For each Encoder — setup phases:**<br/>1. ensure_normal_mode() (crash recovery)<br/>2. Read revision, save drive config, save iC-MU config<br/>3. configure_in_calibration_mode() (CFGEW=0xFF)<br/>4. reset_analog_to_factory_defaults()"]
+    CALIBRATE --> SETUP["**For each Encoder — setup phases:**<br/>1. apply_config() (write registers from encoders.json)<br/>2. Read revision, save drive config, save iC-MU config<br/>3. configure_in_calibration_mode() (CFGEW=0xFF suppress)<br/>4. reset_analog_to_factory_defaults()"]
 
     SETUP --> TPDO["**Setup data TPDO**<br/>Register TPDO map with<br/>encoder pos_value registers<br/>(before FSoE maps)"]
     TPDO --> FSOE["**Prepare FSoE** (if applicable)<br/>Safety PDO maps registered"]
@@ -232,14 +235,14 @@ flowchart TD
     LOOP -- No --> FAIL["Non-converged encoders:<br/>CalibrationResult(success=False)"]
     FAIL --> MOTOR_STOP
 
-    FINALIZE["**For each converged Encoder:**<br/>finalize():<br/>Optimize nonius SPO table using stored last_analyze_result<br/>Write SPO params to chip<br/>Restore iC-MU config (set_ic_config)<br/>Enable all errors (CFGEW=0x00)<br/>Save to EEPROM (WRITE_ALL)<br/>ABS_RESET (clear startup NON_CTR)"]
+    FINALIZE["**For each converged Encoder:**<br/>finalize():<br/>Optimize nonius SPO table using stored last_analyze_result<br/>Write SPO params to chip<br/>Return CalibrationResult"]
     FINALIZE --> MOTOR_STOP
 
     MOTOR_STOP["**Stop motor**<br/>(motor_spinning context exits)"]
     MOTOR_STOP --> TEARDOWN["Export JSON data (if --save-json)<br/>Teardown data TPDO<br/>Stop PDOs and FSoE"]
     TEARDOWN --> CLEANUP
 
-    CLEANUP["**For all Encoders:**<br/>restore_state() per encoder:<br/>Restore iC-MU config (set_ic_config)<br/>Enable all errors (CFGEW=0x00)<br/>Restore drive config (set_drive_config)"]
+    CLEANUP["**For all Encoders:**<br/>restore_state() per encoder:<br/>Restore iC-MU config (set_ic_config)<br/>Save to EEPROM (WRITE_ALL)<br/>ABS_RESET (clear startup NON_CTR)<br/>Restore drive config (set_drive_config)"]
     CLEANUP --> RESULT["Return dict[encoder_number, CalibrationResult]"]
 ```
 
@@ -321,9 +324,7 @@ classDiagram
         +read_revision() Revision
         +get_drive_config() DriveFrameConfig
         +set_drive_config(config)
-        +get_ic_config() ICMURegisterState
-        +set_ic_config(state)
-        +ensure_normal_mode() bool
+        +apply_config()
         +configure_in_calibration_mode() int
         +read_analog_adjustments() tuple
         +write_analog_adjustments(master, nonius)
@@ -334,6 +335,8 @@ classDiagram
         +abs_reset()
         -_read_ic(reg) int
         -_write_ic(reg, value)
+        -_read_ic_field(reg, field) int
+        -_write_ic_field(reg, field, value)
         -_read_drive(name) int
         -_write_drive(name, value)
     }
@@ -349,7 +352,7 @@ classDiagram
         +mc: MotionController
         +gen_frequency: float
         +has_fsoe: bool
-        +configure_encoders(encoder_sensor_types)
+        +configure_drive_encoders()
         +prepare_fsoe()
         +activate_pdos(refresh_rate)
         +stop_pdos_and_fsoe()
@@ -431,7 +434,7 @@ classDiagram
     _SingleEncoderCalibration ..> CalibrationResult : produces
 ```
 
-> **Encoder**: Wraps a single iC-MU encoder — BiSS read/write, register save/restore via get/set pattern, analog parameter management, nonius SPO writes, factory default reset, EEPROM save. `ensure_normal_mode()` detects and recovers from interrupted calibration runs. State is not stored internally; the caller (`_SingleEncoderCalibration`) manages saved configs.
+> **Encoder**: Wraps a single iC-MU encoder — BiSS read/write, register save/restore via get/set pattern, analog parameter management, nonius SPO writes, factory default reset, EEPROM save. `apply_config()` writes the register values loaded from `config/encoders.json` at the start of each run. State is not stored internally; the caller (`_SingleEncoderCalibration`) manages saved configs.
 >
 > **MotorControl**: Wraps motor operations with transparent FSoE support. Auto-detects drive safety capability, manages the full FSoE lifecycle (prepare/activate/stop), and handles internal generator configuration with current ramp-up to avoid FSoE PDO starvation. The `motor_spinning()` context manager starts and stops the motor; the motor runs continuously for the entire calibration session.
 >
@@ -450,15 +453,15 @@ classDiagram
 - **Convergence**: Configurable `max_iterations` (default=10). Stops early when all 8 residuals ≤ 1.0 LSB. Non-converged encoders get `CalibrationResult(success=False)`; converged ones proceed to EEPROM save.
 - **Motor lifecycle**: The motor runs continuously for the entire calibration session via the `motor_spinning()` context manager. It starts once before the iteration loop and stops after finalization.
 - **TPDO data acquisition**: Raw encoder data is captured via EtherCAT TPDOs (TPDO map on the encoder `pos_value` registers), not BiSS SDO reads. Sampling runs in the same PDO exchange thread as the FSoE safety protocol, giving deterministic capture at the PDO cycle rate.
-- **Two-phase FSoE lifecycle**: `prepare_fsoe()` registers safety PDO maps on the servo, then the caller registers the data TPDO, then `activate_pdos()` starts the PDO thread. This ordering is critical because the TPDO dictionary insertion order must match the sorted index order expected by the process data parser. Uses STO bypass mode with `use_sra=True`. PDO watchdog raised to 1.0s. Current ramped in discrete steps with sleeps to avoid PDO starvation.
+- **Two-phase FSoE lifecycle**: The data TPDO is registered on the servo first (via `_setup_data_tpdo()`), then `prepare_fsoe()` registers the safety PDO maps, then `activate_pdos()` starts the PDO thread. This ordering is critical because the TPDO dictionary insertion order must match the sorted index order expected by the process data parser. Uses STO bypass mode with `use_sra=True`. PDO watchdog set to 6.0s. Current ramped in discrete steps with sleeps to avoid PDO starvation.
 - **Factory-default analog reset**: `reset_analog_to_factory_defaults()` is called during setup (phase 3) to provide a sensible starting point when the current chip state is unknown or corrupted.
 - **Nonius SPO finalization**: `finalize()` uses the stored `last_analyze_result` from the converging iteration to compute the optimized nonius offset table. No extra motor spin or data capture is needed.
-- **EEPROM save sequence**: `finalize()` writes SPO params → restores iC-MU config (`set_ic_config()`) → enables all errors (`CFGEW=0x00`) → saves to EEPROM (`WRITE_ALL` command) → issues `ABS_RESET` to clear the startup NON_CTR error.
-- **Guaranteed restore**: `restore_state()` runs in the outer `finally` block for all encoders. Each encoder restores its iC-MU config, enables all errors (`CFGEW=0x00`), and restores its drive config. Each restore is individually wrapped so one encoder's failure doesn't block another.
+- **EEPROM save sequence**: `restore_state()` restores the saved iC-MU config (`set_ic_config()`) → saves to EEPROM (`WRITE_ALL` command) → issues `ABS_RESET` to clear the startup NON_CTR error → restores the drive frame config. `finalize()` only optimizes and writes the nonius SPO table and returns the `CalibrationResult`; it does not touch EEPROM.
+- **Guaranteed restore**: `restore_state()` runs in the outer `finally` block for all encoders. Each encoder restores its iC-MU config (`set_ic_config()`), saves to EEPROM, issues `ABS_RESET`, and restores its drive config. Each restore is individually wrapped so one encoder's failure doesn't block another.
 - **Multi-encoder**: `DriveEncoderRegisters` maps both encoder 1 and 2 register names. Data is captured simultaneously from all encoders via the shared TPDO map.
 - **Save/restore pattern**: Caller-managed. `Encoder` exposes `get_/set_` methods returning frozen dataclasses.
 - **Motor method**: Internal generator (current mode) with saw-tooth commutation. Configurable via `--gen-current` and `--gen-frequency`.
-- **Crash recovery**: `ensure_normal_mode()` detects RAW mode left by interrupted calibrations and restores the encoder to ABS mode before re-entering calibration.
-- **ERR/WRN suppression**: `CFGEW=0xFF` disables all iC-MU error sources from asserting the BiSS nE/nW bits during calibration, preventing drive faults on uncalibrated encoders. Restored to `CFGEW=0x00` (all errors enabled) both in `finalize()` (for converged encoders) and `restore_state()` (for all encoders).
+- **Crash recovery**: `apply_config()` writes the register values from `config/encoders.json` at the start of each run, which restores an encoder left in RAW mode by an interrupted calibration back to normal ABS mode.
+- **ERR/WRN suppression**: `CFGEW=0xFF` disables all iC-MU error sources from asserting the BiSS nE/nW bits during calibration, preventing drive faults on uncalibrated encoders. The pre-calibration CFGEW is restored via `set_ic_config()` in `restore_state()`; the applied value comes from `config/encoders.json`.
 - **Diagnostic plots and JSON export**: Configurable via CLI flags (`--save-raw-plots`, `--save-residual-bar-plots`, `--save-trend-plot`, `--save-json`). JSON export runs in the inner `finally` block so data is saved even if finalization fails.
 - **Logging**: `logging` module throughout. `--verbose` enables DEBUG output.

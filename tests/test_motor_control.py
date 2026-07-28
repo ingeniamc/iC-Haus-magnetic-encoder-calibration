@@ -3,9 +3,22 @@ import time
 import pytest
 from ingeniamotion.enums import SensorType
 
+from ic_haus_magnetic_encoder_calibration.config_loader import EncoderRegisterConfig
 from ic_haus_magnetic_encoder_calibration.encoder import Encoder
 from ic_haus_magnetic_encoder_calibration.ic_haus_registers import CFGEW
 from ic_haus_magnetic_encoder_calibration.motor_control import MotorControl
+
+
+@pytest.fixture
+def encoder_config():
+    return EncoderRegisterConfig(
+        out_msb=0x06,
+        out_lsb=0x00,
+        mode_st=0x00,
+        enac=0x01,
+        cfgew=0x00,
+        filt=0x02,
+    )
 
 
 @pytest.fixture
@@ -218,7 +231,7 @@ def hw_motor(mc):
 
 
 @pytest.fixture
-def hw_encoder(mc):
+def hw_encoder(mc, encoder_config):
     """Prepare encoder for hardware motor tests.
 
     Ensures the encoder is in normal ABS mode (not leftover RAW from a
@@ -228,8 +241,8 @@ def hw_encoder(mc):
     Returns:
         An Encoder with normal mode restored and error flags suppressed.
     """
-    enc = Encoder(mc, sensor_type=SensorType.ABS1, axis=1)
-    enc.ensure_normal_mode()
+    enc = Encoder(mc, sensor_type=SensorType.ABS1, axis=1, config=encoder_config)
+    enc.apply_config()
     enc._write_ic(CFGEW, 0xFF)
     return enc
 

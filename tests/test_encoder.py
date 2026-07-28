@@ -1,6 +1,7 @@
 import pytest
 from ingeniamotion.enums import SensorType
 
+from ic_haus_magnetic_encoder_calibration.config_loader import EncoderRegisterConfig
 from ic_haus_magnetic_encoder_calibration.drive_encoder_registers import (
     ENCODER_1_REGS,
 )
@@ -15,8 +16,25 @@ from ic_haus_magnetic_encoder_calibration.ic_haus_registers import (
 
 
 @pytest.fixture
-def encoder(mock_mc):
-    return Encoder(mock_mc, sensor_type=SensorType.ABS1, axis=1)
+def encoder_config():
+    return EncoderRegisterConfig(
+        out_msb=0x06,
+        out_lsb=0x00,
+        mode_st=0x00,
+        enac=0x01,
+        cfgew=0x00,
+        filt=0x02,
+    )
+
+
+@pytest.fixture
+def encoder(mock_mc, encoder_config):
+    return Encoder(
+        mock_mc,
+        sensor_type=SensorType.ABS1,
+        axis=1,
+        config=encoder_config,
+    )
 
 
 class TestBissReadWrite:
@@ -56,83 +74,18 @@ class TestReadRevision:
             encoder.read_revision()
 
 
-class TestEnsureNormalMode:
-    """Tests for ensure_normal_mode with enac_enabled parameter."""
-
-    def test_already_normal_mode_returns_true(self, encoder, mock_mc) -> None:
-        """When encoder is already in normal mode, returns True."""
-        mock_mc.communication.get_register.side_effect = [
-            0x00,  # ENAC read
-            0x06,  # OUT_MSB_ZERO (out_msb bits[0:4] = 0x06)
-            0x00,  # OUT_LSB_ST (mode_st bits[4:5] = 0x00)
-        ]
-
-        result = encoder.ensure_normal_mode(enac_enabled=True)
-
-        assert result is True
-
-    def test_writes_enac_enabled_true(self, encoder, mock_mc) -> None:
-        """When enac_enabled=True, writes ENAC bit 7 = 1."""
-        mock_mc.communication.get_register.side_effect = [
-            0x00,  # ENAC read (starts as 0)
-            0x06,  # OUT_MSB_ZERO (out_msb=0x06)
-            0x00,  # OUT_LSB_ST (mode_st=0x00)
-        ]
-
-        encoder.ensure_normal_mode(enac_enabled=True)
-
-        # The ENAC write should set bit 7
-        data_writes = [
-            c.args[1]
-            for c in mock_mc.communication.set_register.call_args_list
-            if c.args[0] == ENCODER_1_REGS.itf_data
-        ]
-        # First data write is the ENAC value (bit 7 set = 0x80)
-        assert data_writes[0] == 0x80
-
-    def test_writes_enac_enabled_false(self, encoder, mock_mc) -> None:
-        """When enac_enabled=False, writes ENAC bit 7 = 0."""
-        mock_mc.communication.get_register.side_effect = [
-            0x80,  # ENAC read (starts with bit 7 set)
-            0x06,  # OUT_MSB_ZERO (out_msb=0x06)
-            0x00,  # OUT_LSB_ST (mode_st=0x00)
-        ]
-
-        encoder.ensure_normal_mode(enac_enabled=False)
-
-        # The ENAC write should clear bit 7
-        data_writes = [
-            c.args[1]
-            for c in mock_mc.communication.set_register.call_args_list
-            if c.args[0] == ENCODER_1_REGS.itf_data
-        ]
-        assert data_writes[0] == 0x00
-
-    def test_not_normal_mode_returns_false(self, encoder, mock_mc) -> None:
-        """When encoder is in RAW mode, restores and returns False."""
-        mock_mc.communication.get_register.side_effect = [
-            0x00,  # ENAC read
-            0x0E,  # OUT_MSB_ZERO (out_msb=0x0E != 0x06)
-            0x20,  # OUT_LSB_ST (mode_st=0x02 != 0x00)
-            0x20,  # OUT_LSB_ST read for restore
-            0x0E,  # OUT_MSB_ZERO read for restore
-        ]
-
-        result = encoder.ensure_normal_mode(enac_enabled=True)
-
-        assert result is False
-
-
 class TestConfigureInCalibrationMode:
     def test_mpc_0x0c_reduced_to_0x0b(self, encoder, mock_mc) -> None:
         """MPC=0x0C is a special case that must be reduced to 0x0B."""
         mock_mc.communication.get_register.side_effect = [
             0x80,  # ENAC already set
             0x02,  # MODEA already BiSS
-            0x0E,  # OUT_MSB_ZERO already correct
-            0x20,  # OUT_LSB_ST = raw mode
-            0x00,  # TEST
-            0x0C,  # MPC = 0x0C (triggers reduction)
+            0x0E,  # OUT_MSB_ZERO read (out_msb write)
+            0x0E,  # OUT_MSB_ZERO read (out_zero write)
+            0x20,  # OUT_LSB_ST read (mode_st write)
+            0x20,  # OUT_LSB_ST read (out_lsb write)
+            0x0C,  # MPC read (= 0x0C, triggers reduction)
+            0x0C,  # MPC read-modify-write (reduce to 0x0B)
         ]
 
         n_periods = encoder.configure_in_calibration_mode()
@@ -189,13 +142,13 @@ class TestGetICConfig:
 
 
 @pytest.fixture
-def hw_encoder(mc):
+def hw_encoder(mc, encoder_config):
     """Create an Encoder using the real MotionController.
 
     Returns:
         An Encoder configured for encoder 1 on axis 1.
     """
-    return Encoder(mc, sensor_type=SensorType.ABS1, axis=1)
+    return Encoder(mc, sensor_type=SensorType.ABS1, axis=1, config=encoder_config)
 
 
 @pytest.mark.hardware
@@ -242,3 +195,31 @@ class TestAnalogAdjustmentsHardware:
         master, nonius = hw_encoder.read_analog_adjustments()
         assert master is not None
         assert nonius is not None
+
+
+class TestApplyConfig:
+    def test_out_msb_preserves_out_zero_bits(self, encoder, mock_mc) -> None:
+        """OUT_MSB write must only touch bits[0:4] of OUT_MSB_ZERO (0x11),
+        leaving out_zero (bits[5:7]) intact -- regression for DR3256AC-844."""
+        cfg = EncoderRegisterConfig.from_dict({
+            "OUT_MSB": "0x05",
+            "OUT_LSB": "0x00",
+            "MODE_ST": "0x00",
+            "ENAC": "0x00",
+            "CFGEW": "0x00",
+            "FILT": "0x00",
+        })
+        encoder._config = cfg
+        # OUT_MSB_ZERO currently reads 0xE0 (out_zero = 0b111 set)
+        mock_mc.communication.get_register.return_value = 0xE0
+
+        encoder.apply_config()
+
+        # Find the value written to OUT_MSB_ZERO
+        writes = [
+            c.args[1]
+            for c in mock_mc.communication.set_register.call_args_list
+            if c.args[0] == ENCODER_1_REGS.itf_data
+        ]
+        # out_zero (0xE0) preserved, out_msb set to 0x05 -> 0xE5
+        assert 0xE5 in writes

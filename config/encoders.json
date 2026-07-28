@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "description": "Default encoder configuration.",
+  "1": {
+    "OUT_MSB": "",
+    "OUT_LSB": "",
+    "MODE_ST": "",
+    "ENAC": "",
+    "CFGEW": "",
+    "FILT": ""
+    
+  },
+  "2": {
+    "OUT_MSB": "",
+    "OUT_LSB": "",
+    "MODE_ST": "",
+    "ENAC": "",
+    "CFGEW": "",
+    "FILT": ""
+  }
+}
