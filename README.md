@@ -13,14 +13,14 @@ encoder's EEPROM.
 
 ## Prerequisites
 
-- Python 3.12
+- Python 3.9 or 3.12
 - A Novanta/Ingenia drive with iC-MU encoder(s) connected via EtherCAT
 - The XDF dictionary file for your drive
 - An EtherCAT network interface (e.g. `\Device\NPF_{...}`)
 - The `mu-3sl` library
 - A `config/encoders.json` file defining the register values applied to each
   encoder (see [config/README.md](config/README.md)). Calibration fails if it
-  is missing.
+  is missing or incomplete.
 
 ## Installation
 
@@ -77,21 +77,38 @@ encoder's EEPROM.
 
 ### Key options
 
-| Option                | Default | Description                                  |
-|-----------------------|---------|----------------------------------------------|
-| `--interface`         | —       | EtherCAT network interface name (required)   |
-| `--dictionary`        | —       | Path to XDF dictionary file (required)       |
-| `--drive-config`      | `None`  | Path to an XCF file loaded onto the drive before calibration |
-| `--encoder-config`    | `None`  | Path to a JSON file loaded onto the encoders after the calibration |
-| `--encoder`           | `both`  | Which encoder(s): `1`, `2`, or `both`        |
-| `--max-iterations`    | `10`     | Maximum analog calibration iterations        |
-| `--gen-frequency`     | `0.4`   | Saw-tooth generator frequency (Hz)           |
-| `--gen-current`       | `1.0`   | Quadrature current (A)                       |
-| `--pdo-rate-ms`       | `1.0`   | PDO cycle time (ms)                          |
-| `--capture-duration`  | `30.0`  | Data capture duration per iteration (s)      |
-| `--output-dir`        | `calibration_output` | Directory for plots and JSON    |
-| `--save-json`         | `true`  | Export calibration data as JSON              |
-| `--verbose`           |         | Enable debug logging                         |
+#### Connectivity
+
+| Option           | Default | Description                                                      |
+|------------------|---------|------------------------------------------------------------------|
+| `--interface`    | —       | EtherCAT network interface name (required)                       |
+| `--dictionary`   | —       | Path to XDF dictionary file (required)                           |
+| `--slave-id`     | `1`     | EtherCAT slave ID                                                |
+| `--axis`         | `1`     | Drive axis number                                                |
+| `--drive-config` | `None`  | Path to an XCF file loaded onto the drive before calibration     |
+| `--verbose`      |         | Enable debug logging                                             |
+
+#### Calibration
+
+| Option                | Default | Description                                        |
+|-----------------------|---------|----------------------------------------------------|
+| `--encoder`           | `both`  | Which encoder(s): `1`, `2`, or `both`              |
+| `--encoder-config`    | `None`  | Path to a JSON file loaded onto the encoders after the calibration. If no file is specified  _encoders.json_ is used. |
+| `--max-iterations`    | `10`    | Maximum analog calibration iterations              |
+| `--gen-frequency`     | `0.4`   | Saw-tooth generator frequency (Hz)                 |
+| `--gen-current`       | `1.0`   | Quadrature current (A)                             |
+| `--pdo-rate-ms`       | `1.0`   | PDO cycle time (ms)                                |
+| `--capture-duration`  | `30.0`  | Data capture duration per iteration (s)            |
+
+#### Output
+
+| Option                       | Default              | Description                                  |
+|------------------------------|----------------------|----------------------------------------------|
+| `--output-dir`               | `calibration_output` | Directory for plots and JSON                 |
+| `--save-raw-plots`           | `false`              | Save per-iteration raw waveform PNGs         |
+| `--save-residual-bar-plots`  | `false`              | Save per-iteration residual bar chart PNGs   |
+| `--save-trend-plot`          | `true`               | Save residuals trend PNG                     |
+| `--save-json`                | `true`               | Export calibration data as JSON              |
 
 Run `python __main__.py --help` for the full list.
 

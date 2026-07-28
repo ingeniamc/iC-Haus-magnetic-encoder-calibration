@@ -177,7 +177,7 @@ flowchart TD
     MU([mu_3sl — DLL wrapper — External])
     IM([ingeniamotion — External])
 
-    MAIN -->|"parses args, creates mc,<br/>configure_encoders()"| CAL
+    MAIN -->|"parses args, creates mc,<br/>configure_drive_encoders()"| CAL
     CAL -->|"orchestrates"| ENC
     CAL -->|"delegates motor ops"| MOT
     CAL -->|"diagnostic plots"| PLOT
@@ -196,12 +196,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CLI["**CLI** (__main__.py)<br/>--interface, --dictionary,<br/>--encoder 1|2|both, --axis,<br/>--gen-current, --gen-frequency,<br/>--max-iterations, --pdo-rate-ms,<br/>--capture-duration,<br/>--save-raw-plots, --save-residual-bar-plots,<br/>--save-trend-plot, --save-json"]
+    CLI["**CLI** (__main__.py)<br/>--interface, --dictionary,<br/>--slave-id, --encoder 1|2|both, --axis,<br/>--gen-current, --gen-frequency,<br/>--max-iterations, --pdo-rate-ms,<br/>--capture-duration,<br/>--save-raw-plots, --save-residual-bar-plots,<br/>--save-trend-plot, --save-json"]
 
     CLI --> CONNECT["Connect to drive via EtherCAT"]
     CONNECT --> CREATE["Create EncoderCalibrator<br/>(wraps MotorControl internally)<br/>Add Encoder(sensor_type) for each encoder"]
 
-    CREATE --> CONFIGURE["**configure_encoders()**<br/>Sensors: INTGEN (vel/pos/commu)<br/>+ enrolled encoder sensor types as<br/>auxiliary / reference feedback"]
+    CREATE --> CONFIGURE["**configure_drive_encoders()**<br/>Sensors: INTGEN (vel/pos/commu)<br/>+ enrolled encoder sensor types as<br/>auxiliary / reference feedback"]
 
     CONFIGURE --> CALIBRATE["**calibrator.calibrate()**"]
 
@@ -352,7 +352,7 @@ classDiagram
         +mc: MotionController
         +gen_frequency: float
         +has_fsoe: bool
-        +configure_encoders(encoder_sensor_types)
+        +configure_drive_encoders()
         +prepare_fsoe()
         +activate_pdos(refresh_rate)
         +stop_pdos_and_fsoe()
@@ -453,7 +453,7 @@ classDiagram
 - **Convergence**: Configurable `max_iterations` (default=10). Stops early when all 8 residuals ≤ 1.0 LSB. Non-converged encoders get `CalibrationResult(success=False)`; converged ones proceed to EEPROM save.
 - **Motor lifecycle**: The motor runs continuously for the entire calibration session via the `motor_spinning()` context manager. It starts once before the iteration loop and stops after finalization.
 - **TPDO data acquisition**: Raw encoder data is captured via EtherCAT TPDOs (TPDO map on the encoder `pos_value` registers), not BiSS SDO reads. Sampling runs in the same PDO exchange thread as the FSoE safety protocol, giving deterministic capture at the PDO cycle rate.
-- **Two-phase FSoE lifecycle**: `prepare_fsoe()` registers safety PDO maps on the servo, then the caller registers the data TPDO, then `activate_pdos()` starts the PDO thread. This ordering is critical because the TPDO dictionary insertion order must match the sorted index order expected by the process data parser. Uses STO bypass mode with `use_sra=True`. PDO watchdog set to 6.0s. Current ramped in discrete steps with sleeps to avoid PDO starvation.
+- **Two-phase FSoE lifecycle**: The data TPDO is registered on the servo first (via `_setup_data_tpdo()`), then `prepare_fsoe()` registers the safety PDO maps, then `activate_pdos()` starts the PDO thread. This ordering is critical because the TPDO dictionary insertion order must match the sorted index order expected by the process data parser. Uses STO bypass mode with `use_sra=True`. PDO watchdog set to 6.0s. Current ramped in discrete steps with sleeps to avoid PDO starvation.
 - **Factory-default analog reset**: `reset_analog_to_factory_defaults()` is called during setup (phase 3) to provide a sensible starting point when the current chip state is unknown or corrupted.
 - **Nonius SPO finalization**: `finalize()` uses the stored `last_analyze_result` from the converging iteration to compute the optimized nonius offset table. No extra motor spin or data capture is needed.
 - **EEPROM save sequence**: `restore_state()` restores the saved iC-MU config (`set_ic_config()`) → saves to EEPROM (`WRITE_ALL` command) → issues `ABS_RESET` to clear the startup NON_CTR error → restores the drive frame config. `finalize()` only optimizes and writes the nonius SPO table and returns the `CalibrationResult`; it does not touch EEPROM.
