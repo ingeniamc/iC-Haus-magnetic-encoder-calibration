@@ -4,6 +4,7 @@ import logging
 import pytest
 
 from ic_haus_magnetic_encoder_calibration.config_loader import (
+    DEFAULT_ENCODER_CONFIG_PATH,
     EncoderRegisterConfig,
     _parse_hex_or_int,
     load_encoders_configuration_file,
@@ -200,3 +201,14 @@ class TestLoadEncodersConfigurationFile:
 
         with pytest.raises(ValueError, match="No valid encoder configs found"):
             load_encoders_configuration_file(path)
+
+    def test_default_config_path_points_to_workspace_root(self) -> None:
+        """DEFAULT_ENCODER_CONFIG_PATH should point to config/encoders.json at workspace root."""
+        # The path should end with "config/encoders.json"
+        assert DEFAULT_ENCODER_CONFIG_PATH.name == "encoders.json"
+        assert DEFAULT_ENCODER_CONFIG_PATH.parent.name == "config"
+        # And it should NOT be inside the ic_haus_magnetic_encoder_calibration package
+        path_parts = DEFAULT_ENCODER_CONFIG_PATH.parts
+        assert "ic_haus_magnetic_encoder_calibration" not in path_parts
+        # And the file should actually exist
+        assert DEFAULT_ENCODER_CONFIG_PATH.exists()
