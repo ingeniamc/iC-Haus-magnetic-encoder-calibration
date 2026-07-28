@@ -6,6 +6,7 @@ from ic_haus_magnetic_encoder_calibration.calibrator import (
     EncoderCalibrator,
     _SingleEncoderCalibration,
 )
+from ic_haus_magnetic_encoder_calibration.config_loader import EncoderRegisterConfig
 from ic_haus_magnetic_encoder_calibration.encoder import split_raw_payload
 
 
@@ -533,9 +534,27 @@ class TestAddEncoder:
 class TestCalibrationHardware:
     def test_calibrate_both_encoders(self, mc) -> None:
         """Both encoders converge from zero gains."""
+        # Adjust the register values to match your specific encoder configuration.
+        config_enc1 = EncoderRegisterConfig(
+            out_msb=0x05,
+            out_lsb=0x00,
+            mode_st=0x00,
+            enac=0x01,
+            cfgew=0x00,
+            filt=0x03,
+        )
+        config_enc2 = EncoderRegisterConfig(
+            out_msb=0x05,
+            out_lsb=0x00,
+            mode_st=0x00,
+            enac=0x01,
+            cfgew=0x00,
+            filt=0x03,
+        )
+        # If needed, adjust the calibrator values to match your specific drive/encoder config
         cal = EncoderCalibrator(mc, axis=1)
-        enc1 = cal.add_encoder(SensorType.ABS1)
-        enc2 = cal.add_encoder(SensorType.SSI2)
+        enc1 = cal.add_encoder(SensorType.ABS1, config_enc1)
+        enc2 = cal.add_encoder(SensorType.SSI2, config_enc2)
 
         # Write non-sensical analog adjustments
         # to validate the calibration can recover from
