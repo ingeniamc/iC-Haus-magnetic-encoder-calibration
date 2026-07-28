@@ -226,12 +226,23 @@ class Encoder:
         return raw
 
     def _write_ic(self, reg: Union[ICHausRegister, ICHausRegisterField], value: int) -> None:
-        """Write an 8-bit value to an iC-MU register via BiSS bidirectional or an iC-MU register field."""
+        """Write an 8-bit value to an iC-MU register or a register field via BiSS bidirectional.
+
+        Args:
+            reg: ICHausRegister or ICHausRegisterField to write.
+            value: 8-bit value to write (0-255).
+
+        Raises:
+            ValueError: If a register field is provided without a parent register.
+
+        """
         field = None
         if isinstance(reg, ICHausRegisterField):
             # If a field is passed, use it to mask/shift the value
             field = reg
             register = field.register
+            if register is None:
+                raise ValueError(f"Field {field.name} has no parent register. Cannot write.")
             value = field.insert(self._read_ic(register), value)
             reg = register
         regs = self._regs
@@ -353,7 +364,7 @@ class Encoder:
         for item, value in self._config.register_writes():
             self._write_ic(item, value)
             # item can be a field or a register; get the appropriate name for logging
-            if isinstance(item, ICHausRegisterField):
+            if isinstance(item, ICHausRegisterField) and item.register is not None:
                 display_name = f"{item.register.name}.{item.name}"
             else:
                 display_name = item.name

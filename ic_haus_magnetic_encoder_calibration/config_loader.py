@@ -2,7 +2,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 from .ic_haus_registers import (
     CFGEW,
@@ -10,6 +10,7 @@ from .ic_haus_registers import (
     FILT,
     OUT_LSB_ST,
     OUT_MSB_ZERO,
+    ICHausRegister,
     ICHausRegisterField,
 )
 
@@ -88,7 +89,7 @@ class EncoderRegisterConfig:
             msg = f"Invalid register value in config: {e}"
             raise ValueError(msg) from e
 
-    def register_writes(self) -> list[tuple[ICHausRegisterField, int]]:
+    def register_writes(self) -> list[tuple[Union[ICHausRegisterField, ICHausRegister], int]]:
         """Return (field, value) for each configurable field.
 
         Each field knows its parent register via the backref, so register
@@ -144,7 +145,7 @@ def _parse_hex_or_int(value: Union[str, int]) -> int:
 
 
 def load_encoders_configuration_file(
-    config_file: Path = DEFAULT_ENCODER_CONFIG_PATH,
+    config_file: Optional[Path] = DEFAULT_ENCODER_CONFIG_PATH,
 ) -> dict[int, EncoderRegisterConfig]:
     """Load encoder configurations from JSON file.
 
@@ -179,6 +180,8 @@ def load_encoders_configuration_file(
         json.JSONDecodeError: If config file is not valid JSON.
         ValueError: If configuration format is invalid or no valid configurations are found.
     """
+    if not config_file:
+        config_file = DEFAULT_ENCODER_CONFIG_PATH
     if not config_file.exists():
         msg = f"Encoder config file not found: {config_file}"
         raise FileNotFoundError(msg)
