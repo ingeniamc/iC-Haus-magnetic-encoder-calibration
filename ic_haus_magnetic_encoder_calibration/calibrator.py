@@ -85,7 +85,6 @@ class _SingleEncoderCalibration:
         self._cal: Optional[mu_3sl.Calibration] = None
         self.n_master_periods: int = 0
         self.saved_drive_config: Optional[DriveFrameConfig] = None
-        self.post_calibration_ic_config: Optional[EncoderRegisterConfig] = None
         self.saved_ic_config: Optional[ICMURegisterState] = None
         self.converged: bool = False
         self.iteration_count: int = 0
@@ -118,12 +117,7 @@ class _SingleEncoderCalibration:
     # -- Setup phases --
 
     def save_state(self) -> None:
-        """Phase 1: Apply configuration, read revision, save configs.
-
-        Normal mode is obtained from the encoders.json configuration file,
-        which is loaded by the calibrator before calling this method.
-
-        """
+        """Phase 1: Apply configuration, read revision, save configs."""
         self.enc.apply_config()
         revision = self.enc.read_revision()
         self.saved_drive_config = self.enc.get_drive_config()
@@ -632,10 +626,8 @@ class EncoderCalibrator:
         encoders = [_SingleEncoderCalibration(enc) for enc in self._encoders]
 
         try:
-            # -- Setup phase 1: save state and load post-calibration configs --
+            # -- Setup phase 1: save state --
             for enc in encoders:
-                # First ensure the encoder is in normal mode (not raw mode) so that
-                # the library can read the revision and create a Calibration object.
                 enc.save_state()
 
             # -- Setup phase 2: calibration mode --
