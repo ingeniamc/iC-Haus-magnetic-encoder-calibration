@@ -360,7 +360,11 @@ class Encoder:
         logger.info(f"Encoder {self._number}: iC-MU config registers applied.")
 
     def apply_config(self) -> None:
-        """Apply iC-MU configuration register values previously loaded from a JSON file."""
+        """Apply iC-MU configuration register values.
+
+        Configuration is defined in the EncoderRegisterConfig object passed to the constructor.
+
+        """
         for item, value in self._config.register_writes():
             self._write_ic(item, value)
             # item can be a field or a register; get the appropriate name for logging

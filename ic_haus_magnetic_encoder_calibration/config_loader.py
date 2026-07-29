@@ -34,11 +34,10 @@ JSON_FILT_KEY = "FILT"
 
 @dataclass
 class EncoderRegisterConfig:
-    """Post-calibration iC-MU encoder register configuration.
+    """iC-MU encoder register configuration.
 
-    These values will be written to the encoder after calibration converges
-    but before saving to EEPROM, allowing customization of output frame,
-    error configuration, and filter settings per encoder.
+    These values will be written to the encoder before and after calibration.
+    Allowing customization of output frame, error configuration, and filter settings per encoder.
     """
 
     out_msb: int  # Output frame MSB (OUT_MSB) register value
@@ -53,7 +52,7 @@ class EncoderRegisterConfig:
         """Create from JSON dict with hex string values.
 
         Args:
-            data: Dictionary with keys: OUT_MSB, MODE_ST, ENAC, CFGEW, FILT
+            data: Dictionary with keys: OUT_MSB, OUT_LSB, MODE_ST, ENAC, CFGEW, FILT
                   Values can be hex strings ("0x05") or integers.
 
         Returns:
@@ -90,13 +89,14 @@ class EncoderRegisterConfig:
             raise ValueError(msg) from e
 
     def register_writes(self) -> list[tuple[Union[ICHausRegisterField, ICHausRegister], int]]:
-        """Return (field, value) for each configurable field.
+        """Return (field/register, value) for each configurable register.
 
-        Each field knows its parent register via the backref, so register
-        is not needed here.
+        Each configurable register can be a whole register (CFGEW)
+        or a field within a register (OUT_MSB, OUT_LSB, MODE_ST, ENAC, FILT).
+        Each field knows its parent register via the backref.
 
         Returns:
-        List of (field, value) tuples for writing to hardware.
+            List of (field/register, value) tuples for writing to hardware.
         """
         return [
             (OUT_MSB_ZERO.field("out_msb"), self.out_msb),
@@ -126,7 +126,7 @@ def _parse_hex_or_int(value: Union[str, int]) -> int:
         Parsed integer value.
 
     Raises:
-        ValueError: If the value cannot be parsed.
+        ValueError: If the value cannot be parsed or is empty.
     """
     if isinstance(value, int):
         return value
