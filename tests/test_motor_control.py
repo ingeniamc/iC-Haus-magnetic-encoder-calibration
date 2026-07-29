@@ -3,9 +3,22 @@ import time
 import pytest
 from ingeniamotion.enums import SensorType
 
+from ic_haus_magnetic_encoder_calibration.config_loader import EncoderRegisterConfig
 from ic_haus_magnetic_encoder_calibration.encoder import Encoder
 from ic_haus_magnetic_encoder_calibration.ic_haus_registers import CFGEW
 from ic_haus_magnetic_encoder_calibration.motor_control import MotorControl
+
+
+@pytest.fixture
+def encoder_config():
+    return EncoderRegisterConfig(
+        out_msb=0x06,
+        out_lsb=0x00,
+        mode_st=0x00,
+        enac=0x01,
+        cfgew=0x00,
+        filt=0x02,
+    )
 
 
 @pytest.fixture
@@ -48,6 +61,75 @@ class TestStartMotor:
         saw_idx = call_log.index("saw_tooth")
         assert call_log.count("current") == 10
         assert all(c == "current" for c in call_log[:saw_idx])
+
+    def test_saw_tooth_before_frequency_ramp(self, mock_mc) -> None:
+        """Saw-tooth must start before any frequency-ramp register writes."""
+        motor = MotorControl(mock_mc, axis=1, gen_frequency=5.0)
+        call_log: list[str] = []
+        mock_mc.motion.internal_generator_saw_tooth_move.side_effect = lambda *_a, **_k: (
+            call_log.append("saw_tooth")
+        )
+        mock_mc.communication.set_register.side_effect = lambda *_a, **_k: call_log.append("ramp")
+
+        motor._start_motor()
+
+        assert call_log[0] == "saw_tooth"
+        assert call_log.count("ramp") == 4
+
+    def test_no_frequency_ramp_at_low_frequency(self, mock_mc) -> None:
+        """At/below the min step, generator starts directly with no ramp."""
+        motor = MotorControl(mock_mc, axis=1, gen_frequency=0.4)
+
+        motor._start_motor()
+
+        # Saw-tooth started once at the (single) step frequency, no ramp writes.
+        mock_mc.motion.internal_generator_saw_tooth_move.assert_called_once()
+        _, kwargs = mock_mc.motion.internal_generator_saw_tooth_move.call_args
+        assert kwargs["frequency"] == 0.4
+        mock_mc.communication.set_register.assert_not_called()
+
+    def test_frequency_ramps_up_in_steps(self, mock_mc) -> None:
+        """Above the min step, frequency is ramped via set_register."""
+        motor = MotorControl(mock_mc, axis=1, gen_frequency=5.0)
+
+        motor._start_motor()
+
+        # First step: saw-tooth started at freq_step (1.0 Hz).
+        mock_mc.motion.internal_generator_saw_tooth_move.assert_called_once()
+        _, saw_kwargs = mock_mc.motion.internal_generator_saw_tooth_move.call_args
+        assert saw_kwargs["frequency"] == 1.0
+
+        # Remaining steps ramp the frequency: 2.0, 3.0, 4.0, then target 5.0.
+        freqs = [c.args[1] for c in mock_mc.communication.set_register.call_args_list]
+        assert freqs == [2.0, 3.0, 4.0, 5.0]
+
+    @pytest.mark.parametrize(
+        "target_freq,expected_steps",
+        [
+            (0.3, []),  # no step to target
+            (0.8, []),  # no step to target
+            (1.0, []),  # no step to target
+            (1.5, [1.5]),  # one step to target
+            (2.0, [2.0]),  # one step to target
+            (3.4, [2.0, 3.0, 3.4]),  # multiple steps to target
+            (3.8, [2.0, 3.0, 3.8]),  # multiple steps to target
+            (5.0, [2.0, 3.0, 4.0, 5.0]),  # multiple steps to target
+        ],
+    )
+    def test_frequency_ramp_ends_at_target(self, mock_mc, target_freq, expected_steps) -> None:
+        """The last ramp step writes exactly the configured target frequency."""
+        motor = MotorControl(mock_mc, axis=1, gen_frequency=target_freq)
+
+        motor._start_motor()
+
+        freqs = [c.args[1] for c in mock_mc.communication.set_register.call_args_list]
+        if expected_steps:
+            assert freqs[-1] == expected_steps[-1]  # exact target, not freq_step * ramp_steps
+        assert freqs == expected_steps  # all steps match expected ramp sequence
+
+    def test_rejects_non_positive_frequency(self, mock_mc) -> None:
+        with pytest.raises(ValueError, match="gen_frequency must be positive"):
+            MotorControl(mock_mc, axis=1, gen_frequency=0.0)
 
 
 class TestPrepareFsoe:
@@ -149,7 +231,7 @@ def hw_motor(mc):
 
 
 @pytest.fixture
-def hw_encoder(mc):
+def hw_encoder(mc, encoder_config):
     """Prepare encoder for hardware motor tests.
 
     Ensures the encoder is in normal ABS mode (not leftover RAW from a
@@ -159,8 +241,8 @@ def hw_encoder(mc):
     Returns:
         An Encoder with normal mode restored and error flags suppressed.
     """
-    enc = Encoder(mc, sensor_type=SensorType.ABS1, axis=1)
-    enc.ensure_normal_mode()
+    enc = Encoder(mc, sensor_type=SensorType.ABS1, axis=1, config=encoder_config)
+    enc.apply_config()
     enc._write_ic(CFGEW, 0xFF)
     return enc
 

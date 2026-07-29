@@ -17,11 +17,16 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
+from typing import Optional
 
 import mu_3sl_interface as mu_3sl
 from ingenialink.pdo import RPDOMap, RPDOMapItem, TPDOMap
 from ingeniamotion import MotionController
 from ingeniamotion.enums import SensorType
+
+from ic_haus_magnetic_encoder_calibration.config_loader import (
+    EncoderRegisterConfig,
+)
 
 from .encoder import (
     CalibrationResult,
@@ -77,15 +82,15 @@ class _SingleEncoderCalibration:
 
     def __init__(self, enc: Encoder) -> None:
         self.enc = enc
-        self._cal: mu_3sl.Calibration | None = None
+        self._cal: Optional[mu_3sl.Calibration] = None
         self.n_master_periods: int = 0
-        self.saved_drive_config: DriveFrameConfig | None = None
-        self.saved_ic_config: ICMURegisterState | None = None
+        self.saved_drive_config: Optional[DriveFrameConfig] = None
+        self.saved_ic_config: Optional[ICMURegisterState] = None
         self.converged: bool = False
         self.iteration_count: int = 0
         self.residual_history: list[list[float]] = []
         self.iteration_log: list[dict[str, object]] = []
-        self.last_analyze_result: mu_3sl.AnalyzeResult | None = None
+        self.last_analyze_result: Optional[mu_3sl.AnalyzeResult] = None
 
     @property
     def number(self) -> int:
@@ -112,8 +117,8 @@ class _SingleEncoderCalibration:
     # -- Setup phases --
 
     def save_state(self) -> None:
-        """Phase 1: ensure normal mode, read revision, save configs."""
-        self.enc.ensure_normal_mode()
+        """Phase 1: Apply configuration, read revision, save configs."""
+        self.enc.apply_config()
         revision = self.enc.read_revision()
         self.saved_drive_config = self.enc.get_drive_config()
         self.saved_ic_config = self.enc.get_ic_config()
@@ -172,15 +177,28 @@ class _SingleEncoderCalibration:
 
         Updates :attr:`iteration_count`, :attr:`residual_history`,
         :attr:`iteration_log`, and potentially sets :attr:`converged`.
+
+        Args:
+            iteration: Current iteration number (1-based).
+            raw_data: List of packed 32-bit register values from the drive.
+            output_dir: Directory for diagnostic plot PNGs.
+            interactive: If True, show plots interactively instead of saving.
+            save_raw_plots: If True, save raw waveform plots for this iteration.
+            save_residual_bar_plots: If True, save residual bar plots for this iteration.
+            save_trend_plot: If True, save residuals trend plot (one per encoder).
+
+        Raises:
+            RuntimeError: If monitoring data is empty or non-positive.
+
         """
         self.iteration_count = iteration
 
         if not raw_data:
             logger.warning(
                 f"Encoder {self.number}: 0 samples captured at iteration"
-                f" {iteration} — PDO exchange may have died. Skipping.",
+                f" {iteration} — PDO exchange may have died. Stopping.",
             )
-            return
+            raise RuntimeError("No samples captured. PDO exchange may have died.")
 
         # Unpack packed register values into master / nonius tracks.
         master_raw: list[int] = []
@@ -302,11 +320,27 @@ class _SingleEncoderCalibration:
     def restore_state(self) -> None:
         """Restore drive and iC-MU config (always called, even on error)."""
         try:
-            if self.saved_ic_config is not None:
+            if self.saved_ic_config is None:
+                logger.warning(f"Encoder {self.number}: no saved iC-MU config to restore.")
+            else:
+                # Restore iC-MU config registers (exits raw mode) before EEPROM save.
                 self.enc.set_ic_config(self.saved_ic_config)
-            self.enc.enable_all_errors()
-            if self.saved_drive_config is not None:
+                try:
+                    # Save to EEPROM (raises on failure)
+                    self.enc.save_to_eeprom()
+
+                except RuntimeError:
+                    logger.error(f"Encoder {self.number}: could not save configuration to EEPROM.")
+
+            # Perform an internal reset of the encoder
+            self.enc.abs_reset()
+
+            if self.saved_drive_config is None:
+                logger.warning(f"Encoder {self.number}: no saved drive config to restore.")
+            else:
+                # Restore drive frame config (exits calibration mode) after EEPROM save.
                 self.enc.set_drive_config(self.saved_drive_config)
+
         except Exception:
             logger.warning(
                 f"Encoder {self.number}: could not restore state (drive may be offline).",
@@ -323,13 +357,13 @@ class _SingleEncoderCalibration:
             )
             logger.info(f"Exported calibration data: {json_path}")
 
-    def finalize(self) -> CalibrationResult:
-        """Optimize nonius, save to EEPROM, and build the result.
-
-        Must only be called after convergence (:attr:`converged` is True).
+    def finalize(
+        self,
+    ) -> CalibrationResult:
+        """Finalize calibration: optimize SPO, restore config, save to EEPROM.
 
         Returns:
-            CalibrationResult for this encoder.
+            CalibrationResult with success status and iteration count.
         """
         enc = self.enc
         cal = self.cal
@@ -344,19 +378,7 @@ class _SingleEncoderCalibration:
         table_params = mu_3sl.nonius_track_offset_table_parameters(nonius_table)
         enc.write_nonius_parameters(table_params)
 
-        # Restore iC-MU config registers (exits raw mode) before EEPROM save.
-        assert self.saved_ic_config is not None
-        enc.set_ic_config(self.saved_ic_config)
-
-        # Enable all error sources so real faults are visible.
-        enc.enable_all_errors()
-
-        # Save to EEPROM (raises on failure)
-        enc.save_to_eeprom()
-
-        # Perform an internal reset of the encoder
-        enc.abs_reset()
-
+        # Apply the final analog adjustments to the iC-MU registers (in raw mode).
         final_master = cal.analog_master_track_adjustments()
         final_nonius = cal.analog_nonius_track_adjustments()
         spo_n = [table_params.spo_n[i] for i in range(15)]
@@ -386,6 +408,12 @@ class EncoderCalibrator:
         gen_current: Quadrature current target in amps.
         pdo_rate: PDO cycle time in seconds.
         capture_duration: Data capture duration per iteration in seconds.
+        output_dir: Directory for diagnostic plot PNGs.
+        interactive_plots: If True, show plots interactively instead of saving.
+        save_raw_plots: If True, save raw waveform plots for each iteration.
+        save_residual_bar_plots: If True, save residual bar plots for each iteration.
+        save_trend_plot: If True, save residuals trend plot (one per encoder).
+        save_json: If True, save iteration logs as JSON files.
     """
 
     def __init__(
@@ -398,7 +426,7 @@ class EncoderCalibrator:
         gen_current: float = DEFAULT_GEN_CURRENT,
         pdo_rate: float = DEFAULT_PDO_RATE_S,
         capture_duration: float = DEFAULT_CAPTURE_DURATION_S,
-        output_dir: Path | None = None,
+        output_dir: Optional[Path] = None,
         interactive_plots: bool = False,
         save_raw_plots: bool = False,
         save_residual_bar_plots: bool = False,
@@ -421,38 +449,48 @@ class EncoderCalibrator:
         self._save_trend_plot = save_trend_plot
         self._save_json = save_json
         # PDO state
-        self._tpdo_map: TPDOMap | None = None
-        self._padding_rpdo: RPDOMap | None = None
+        self._tpdo_map: Optional[TPDOMap] = None
+        self._padding_rpdo: Optional[RPDOMap] = None
         self._pdo_buffer: deque[list[int]] = deque()
         self._pdo_lock = threading.Lock()
         self._pdo_collecting = False
 
     # -- Encoder management --
-
-    def add_encoder(self, sensor_type: SensorType) -> Encoder:
-        """Create and register an Encoder for the given sensor type.
+    def add_encoder(self, sensor_type: SensorType, sensor_config: EncoderRegisterConfig) -> Encoder:
+        """Create and register an Encoder for the given sensor type and configuration.
 
         The encoder channel number is derived from the sensor type.
 
         Args:
             sensor_type: Drive feedback sensor type for this encoder.
+            sensor_config: Encoder register configuration for this encoder.
 
         Returns:
             The newly created Encoder instance.
+
+        Raises:
+            ValueError: If the sensor type has no valid config.
+
         """
-        enc = Encoder(self._mc, sensor_type, axis=self._axis)
+        # Add the encoder to the calibrator's list and return it
+        enc = Encoder(self._mc, sensor_type, axis=self._axis, config=sensor_config)
         self._encoders.append(enc)
         logger.info(f"Registered encoder {enc.number} for calibration.")
         return enc
 
     @property
     def encoders(self) -> list[Encoder]:
-        """Return the list of enrolled encoders."""
+        """List of enrolled encoders.
+
+        Returns:
+            List of Encoder instances registered for calibration.
+
+        """
         return list(self._encoders)
 
     # -- Motor control --
 
-    def configure_encoders(self) -> None:
+    def configure_drive_encoders(self) -> None:
         """Configure the drive for internal generator mode with enrolled encoders."""
         sensor_types = [enc.sensor_type for enc in self._encoders]
         self._motor.configure_encoders(sensor_types)
@@ -649,7 +687,9 @@ class EncoderCalibrator:
                     results: dict[int, CalibrationResult] = {}
                     for enc in encoders:
                         if enc.converged:
+                            # Then in the loop:
                             results[enc.number] = enc.finalize()
+
                         else:
                             logger.warning(
                                 f"Encoder {enc.number}: did NOT converge after"

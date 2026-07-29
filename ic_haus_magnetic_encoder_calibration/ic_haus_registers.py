@@ -5,8 +5,8 @@ iC-MU register used in calibration, together with the ``BissAction`` enum
 that drives the BiSS bidirectional interface.
 """
 
-from dataclasses import dataclass
 from enum import IntEnum
+from typing import Optional
 
 # ---------------------------------------------------------------------------
 # BiSS bidirectional CTL actions
@@ -26,7 +26,6 @@ class BissAction(IntEnum):
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
 class ICHausRegisterField:
     """A named bitfield inside an iC-MU register.
 
@@ -34,11 +33,16 @@ class ICHausRegisterField:
         mask: Bitmask selecting the field bits (already shifted).
         shift: Number of bits the field is shifted from bit-0.
         name: Human-readable description of the field.
+        register: Parent ICHausRegister (backref, set after creation).
     """
 
-    mask: int
-    shift: int
-    name: str = ""
+    def __init__(
+        self, *, mask: int, shift: int, name: str = "", register: Optional["ICHausRegister"] = None
+    ):
+        self.mask = mask
+        self.shift = shift
+        self.name = name
+        self.register = register  # backref, set by parent register
 
     @classmethod
     def from_bits(cls, *, low: int, high: int, name: str = "") -> "ICHausRegisterField":
@@ -99,6 +103,10 @@ class ICHausRegister:
         self.name: str = name
         self._fields: dict[str, ICHausRegisterField] = fields
 
+        # Set backref on all fields
+        for field in fields.values():
+            field.register = self
+
     # -- Field access --
 
     def field(self, field_name: str) -> ICHausRegisterField:
@@ -117,7 +125,7 @@ class ICHausRegister:
 
     @property
     def field_names(self) -> tuple[str, ...]:
-        """Return the names of all declared fields."""
+        """Names of all declared fields."""
         return tuple(self._fields)
 
 
@@ -138,8 +146,8 @@ PH_N = ICHausRegister(address=0x0A, name="Phase nonius")
 # Configuration registers with sub-fields
 ENAC = ICHausRegister(
     address=0x05,
-    name="Enable / auto-calibrate",
-    enac=ICHausRegisterField.from_bits(low=7, high=7, name="Auto-calibrate enable"),
+    name="Enable / amplitude control",
+    enac=ICHausRegisterField.from_bits(low=7, high=7, name="Amplitude-control enable"),
 )
 MODEA_MODEB = ICHausRegister(
     address=0x0B,
@@ -148,7 +156,12 @@ MODEA_MODEB = ICHausRegister(
 )
 CFGEW = ICHausRegister(
     address=0x0C,
-    name="Status config for E/W bits",
+    name="Error/Warning Status configuration",
+)
+FILT = ICHausRegister(
+    address=0x0E,
+    name="Digital filter for output signals",
+    filt=ICHausRegisterField.from_bits(low=0, high=2, name="Digital filter configuration"),
 )
 MPC = ICHausRegister(
     address=0x0F,

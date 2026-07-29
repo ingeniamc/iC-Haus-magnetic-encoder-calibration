@@ -7,7 +7,7 @@ public PyPI.
 
 | File | Version | Used by |
 |------|---------|---------|
-| `mu_3sl-3.4.2.1-py3-none-any.whl` | 3.4.2.1 | `poetry install` (via `pyproject.toml`) |
+| `mu_3sl-3.4.3.1.post2-py3-none-any.whl` | 3.4.3.1 | `poetry install` (via `pyproject.toml`) |
 
 ## How to
 

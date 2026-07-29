@@ -6,6 +6,7 @@ from ic_haus_magnetic_encoder_calibration.drive_encoder_registers import (
     get_encoder_registers,
 )
 from ic_haus_magnetic_encoder_calibration.ic_haus_registers import (
+    OUT_MSB_ZERO,
     ICHausRegisterField,
 )
 
@@ -57,3 +58,12 @@ class TestDriveEncoderRegistersFields:
         assert "SSI2" in r.pos_value
         assert "SSI2" in r.frame_size
         assert "SSI2" in r.pos_bits
+
+
+class TestOutMsbZeroFields:
+    def test_out_msb_and_out_zero_do_not_overlap(self) -> None:
+        msb = OUT_MSB_ZERO.field("out_msb")
+        zero = OUT_MSB_ZERO.field("out_zero")
+        assert msb.mask == 0x1F  # bits 0:4
+        assert zero.mask == 0xE0  # bits 5:7
+        assert msb.mask & zero.mask == 0
