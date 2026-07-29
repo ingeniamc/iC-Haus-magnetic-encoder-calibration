@@ -85,7 +85,6 @@ class _SingleEncoderCalibration:
         self._cal: Optional[mu_3sl.Calibration] = None
         self.n_master_periods: int = 0
         self.saved_drive_config: Optional[DriveFrameConfig] = None
-        self.post_calibration_ic_config: Optional[EncoderRegisterConfig] = None
         self.saved_ic_config: Optional[ICMURegisterState] = None
         self.converged: bool = False
         self.iteration_count: int = 0

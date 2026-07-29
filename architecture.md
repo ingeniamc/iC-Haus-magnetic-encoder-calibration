@@ -168,7 +168,7 @@ flowchart TD
     MAIN["__main__.py<br/>CLI entry point<br/>(argparse)"]
     ICREG["ic_haus_registers.py<br/>iC-MU register descriptors<br/>ICHausRegister / ICHausRegisterField<br/>BissAction enum"]
     DRVREG["drive_encoder_registers.py<br/>DriveEncoderRegisters dataclass<br/>Drive register name mappings"]
-    CFG["config_loader.py<br/>EncoderRegisterConfig dataclass<br/>load_encoders_configuration_file()<br/>(reads config/encoders.json)"]
+    CFG["config_loader.py<br/>EncoderRegisterConfig dataclass<br/>(register values: OUT_MSB, OUT_LSB,<br/>MODE_ST, ENAC, CFGEW, FILT)<br/>load_encoders_configuration_file()<br/>(optional: reads config/encoders.json)"]
     ENC["encoder.py<br/>Encoder class<br/>Single encoder operations<br/>BiSS R/W, save/restore,<br/>CalibrationResult dataclass"]
     MOT["motor_control.py<br/>MotorControl class<br/>FSoE lifecycle, motor_spinning(),<br/>configure_encoders() + current ramp"]
     CAL["calibrator.py<br/>EncoderCalibrator class<br/>_SingleEncoderCalibration per-encoder state<br/>TPDO data acquisition, diagnostic plots"]
@@ -199,9 +199,13 @@ flowchart TD
     CLI["**CLI** (__main__.py)<br/>--interface, --dictionary,<br/>--slave-id, --encoder 1|2|both, --axis,<br/>--gen-current, --gen-frequency,<br/>--max-iterations, --pdo-rate-ms,<br/>--capture-duration,<br/>--save-raw-plots, --save-residual-bar-plots,<br/>--save-trend-plot, --save-json"]
 
     CLI --> CONNECT["Connect to drive via EtherCAT"]
-    CONNECT --> CREATE["Create EncoderCalibrator<br/>(wraps MotorControl internally)<br/>Add Encoder(sensor_type) for each encoder"]
+    CONNECT --> PREP_CONF["**Prepare Encoder Configs**<br/>Either:<br/>1. Load from JSON via load_encoders_configuration_file()<br/>2. Create EncoderRegisterConfig directly<br/>Returns dict[encoder_number, EncoderRegisterConfig]"]
 
-    CREATE --> CONFIGURE["**configure_drive_encoders()**<br/>Sensors: INTGEN (vel/pos/commu)<br/>+ enrolled encoder sensor types as<br/>auxiliary / reference feedback"]
+    PREP_CONF --> CREATE["Create EncoderCalibrator<br/>(wraps MotorControl internally)"]
+
+    CREATE --> ADD["**Add Encoders**<br/>For each encoder number:<br/>calibrator.add_encoder(sensor_type, config)<br/>Config is REQUIRED (from JSON or custom)"]
+
+    ADD --> CONFIGURE["**configure_drive_encoders()**<br/>Sensors: INTGEN (vel/pos/commu)<br/>+ enrolled encoder sensor types as<br/>auxiliary / reference feedback"]
 
     CONFIGURE --> CALIBRATE["**calibrator.calibrate()**"]
 
@@ -318,6 +322,7 @@ classDiagram
         -_number: int
         -_axis: int
         -_regs: DriveEncoderRegisters
+        -_config: EncoderRegisterConfig
         +number: int
         +sensor_type: SensorType
         +regs: DriveEncoderRegisters
@@ -336,7 +341,6 @@ classDiagram
         -_read_ic(reg) int
         -_write_ic(reg, value)
         -_read_ic_field(reg, field) int
-        -_write_ic_field(reg, field, value)
         -_read_drive(name) int
         -_write_drive(name, value)
     }
@@ -352,7 +356,7 @@ classDiagram
         +mc: MotionController
         +gen_frequency: float
         +has_fsoe: bool
-        +configure_drive_encoders()
+        +configure_encoders(encoder_sensor_types: list~SensorType~)
         +prepare_fsoe()
         +activate_pdos(refresh_rate)
         +stop_pdos_and_fsoe()
@@ -399,12 +403,13 @@ classDiagram
         -_save_trend_plot: bool
         -_save_json: bool
         -_tpdo_map: TPDOMap?
+        -_padding_rpdo: RPDOMap?
         -_pdo_buffer: deque
         -_pdo_lock: Lock
         -_pdo_collecting: bool
         +encoders: list~Encoder~
-        +add_encoder(sensor_type) Encoder
-        +configure_encoders()
+        +add_encoder(sensor_type, sensor_config) Encoder
+        +configure_encoders(encoder_sensor_types: list~SensorType~)
         +calibrate() dict~int, CalibrationResult~
         -_setup_data_tpdo()
         -_teardown_data_tpdo()
@@ -415,6 +420,7 @@ classDiagram
     class plotting {
         <<module>>
         +RESIDUAL_THRESHOLD: float
+        +warm_matplotlib_cache() void
         +_plot_raw_waveforms(master, nonius, ...)
         +_plot_residuals_bar(residuals, ...)
         +_plot_residuals_trend(history, ...)
@@ -434,13 +440,13 @@ classDiagram
     _SingleEncoderCalibration ..> CalibrationResult : produces
 ```
 
-> **Encoder**: Wraps a single iC-MU encoder — BiSS read/write, register save/restore via get/set pattern, analog parameter management, nonius SPO writes, factory default reset, EEPROM save. `apply_config()` writes the register values loaded from `config/encoders.json` at the start of each run. State is not stored internally; the caller (`_SingleEncoderCalibration`) manages saved configs.
+> **Encoder**: Wraps a single iC-MU encoder — BiSS read/write, register save/restore via get/set pattern, analog parameter management, nonius SPO writes, factory default reset, EEPROM save. The constructor requires an `EncoderRegisterConfig` (from JSON or custom). `apply_config()` writes the register values from this config to the chip at the start of each run. State is not stored internally; the caller (`_SingleEncoderCalibration`) manages saved configs.
 >
 > **MotorControl**: Wraps motor operations with transparent FSoE support. Auto-detects drive safety capability, manages the full FSoE lifecycle (prepare/activate/stop), and handles internal generator configuration with current ramp-up to avoid FSoE PDO starvation. The `motor_spinning()` context manager starts and stops the motor; the motor runs continuously for the entire calibration session.
 >
 > **_SingleEncoderCalibration**: Per-encoder calibration state and iteration logic. Tracks calibration progress through setup (save state, enter calibration mode, reset analog), iterative analysis (`process_iteration()`), and cleanup (`restore_state()`, `finalize()`). Owns the mu_3sl `Calibration` object and stores residual history, iteration log, and the last analysis result.
 >
-> **EncoderCalibrator**: Orchestrates calibration across N encoders. Delegates all motor and FSoE operations to an internal `MotorControl` instance, manages TPDO data acquisition, and coordinates the calibration loop. Motor runs continuously for the entire session via `motor_spinning()`; data is captured from all encoders simultaneously via EtherCAT TPDOs.
+> **EncoderCalibrator**: Orchestrates calibration across N encoders. The caller must: (1) obtain encoder configs (via `load_encoders_configuration_file()` from JSON or by creating `EncoderRegisterConfig` objects directly), (2) create the calibrator, (3) call `add_encoder(sensor_type, config)` for each sensor to enroll (configs are **required**), (4) call `configure_drive_encoders()` to set up the drive, and (5) call `calibrate()` to run the loop. The `calibrate()` method delegates all motor and FSoE operations to an internal `MotorControl` instance, manages TPDO data acquisition, and coordinates the calibration loop. Motor runs continuously for the entire session via `motor_spinning()`; data is captured from all encoders simultaneously via EtherCAT TPDOs.
 >
 > **plotting**: Module-level diagnostic plot functions for raw waveforms, per-iteration residual bar charts, and cumulative residual trend lines. Each figure is saved as PNG.
 
@@ -464,4 +470,6 @@ classDiagram
 - **Crash recovery**: `apply_config()` writes the register values from `config/encoders.json` at the start of each run, which restores an encoder left in RAW mode by an interrupted calibration back to normal ABS mode.
 - **ERR/WRN suppression**: `CFGEW=0xFF` disables all iC-MU error sources from asserting the BiSS nE/nW bits during calibration, preventing drive faults on uncalibrated encoders. The pre-calibration CFGEW is restored via `set_ic_config()` in `restore_state()`; the applied value comes from `config/encoders.json`.
 - **Diagnostic plots and JSON export**: Configurable via CLI flags (`--save-raw-plots`, `--save-residual-bar-plots`, `--save-trend-plot`, `--save-json`). JSON export runs in the inner `finally` block so data is saved even if finalization fails.
+- **Motor start-up frequency ramp-up**: During `_start_motor()`, the generator current is ramped up in discrete steps with sleeps between steps. This allows the motor time to accelerate and reach operating speed, which is essential for FSoE PDO state acquisition. The ramp-up timing must be tuned in accordance with `gen_current` — a lower current requires a longer ramp-up, while a higher current allows faster acceleration.
+- **Encoder config flexibility**: `EncoderRegisterConfig` can be obtained two ways: (1) load from a JSON file via `load_encoders_configuration_file()` (with a default path to `config/encoders.json` or a custom path), or (2) instantiate directly as a dataclass with register values. This design allows the CLI to use JSON files while programmatic users can create configs on-the-fly. Both paths produce the same `dict[encoder_number, EncoderRegisterConfig]` structure passed to `add_encoder()`.
 - **Logging**: `logging` module throughout. `--verbose` enables DEBUG output.
