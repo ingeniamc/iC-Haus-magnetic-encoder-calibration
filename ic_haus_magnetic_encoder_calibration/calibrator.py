@@ -816,12 +816,18 @@ class EncoderCalibrator:
                                 f" {self._max_iterations} iterations."
                                 f" Skipping EEPROM save.",
                             )
-                            in_range = enc.get_nonius_in_range(enc.last_analyze_result)
+                            last_analyze_result = enc.last_analyze_result
+                            if last_analyze_result is None:
+                                in_range_max = in_range_min = 0.0
+                            else:
+                                in_range = enc.get_nonius_in_range(enc.last_analyze_result)
+                                in_range_max = in_range.in_range_max
+                                in_range_min = in_range.in_range_min
                             results[enc.number] = CalibrationResult(
                                 success=False,
                                 iterations=enc.iteration_count,
-                                nonius_in_range_max=in_range.in_range_max,
-                                nonius_in_range_min=in_range.in_range_min,
+                                nonius_in_range_max=in_range_max,
+                                nonius_in_range_min=in_range_min,
                             )
 
                 return results
