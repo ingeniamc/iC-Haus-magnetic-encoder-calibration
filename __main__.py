@@ -62,11 +62,11 @@ def _positive_float(value: str) -> float:
     return number
 
 
-def _percentage(value: float) -> float:
+def _percentage(value: str) -> float:
     """Ensure a percentage CLI argument value (0-100).
 
     Args:
-        value: The float value to check.
+        value: The string value to parse as a float.
 
     Returns:
         The parsed float percentage value (0-100).

@@ -528,7 +528,8 @@ class EncoderCalibrator:
         save_residual_bar_plots: If True, save residual bar plots for each iteration.
         save_trend_plot: If True, save residuals trend plot (one per encoder).
         save_json: If True, save iteration logs as JSON files.
-        force_in_range: If True, treat Nonius In Range > 60% as a calibration failure.
+        force_in_range: If not None, treat Nonius In Range > force_in_range(%)
+            as a calibration failure.
     """
 
     def __init__(
