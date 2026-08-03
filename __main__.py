@@ -215,7 +215,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Force calibration to keep iterating if the Nonius InRange value exceeds a "
             "threshold. If omitted, the InRange value is not enforced. If given "
-            f"without a value, defaults to {NONIUS_IN_RANGE_RECOMMENDED_MAX_PERCENT:.0f}%. "
+            f"without a value, defaults to {NONIUS_IN_RANGE_RECOMMENDED_MAX_PERCENT:.0f}%%. "
             "If given with a value (e.g. --force-in-range 70), that value is used "
             "as the threshold."
         ),
