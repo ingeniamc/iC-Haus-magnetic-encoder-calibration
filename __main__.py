@@ -189,13 +189,20 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Run the iC-Haus magnetic encoder calibration."""
+    """Run the iC-Haus magnetic encoder calibration.
+
+    Raises:
+        ValueError: If the encoder configuration file is invalid or missing required fields.
+
+    """
     args = parse_args()
 
+    # Set log level based on verbosity flag
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
     )
+    logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
     mc = MotionController()
     mc.communication.connect_servo_ethercat(
