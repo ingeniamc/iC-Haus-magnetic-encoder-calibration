@@ -225,7 +225,8 @@ class _SingleEncoderCalibration:
             in_range_threshold: Threshold percentage (0-100) for In Range check.
 
         Returns:
-            True if both the "max" and "min" In Range values are below the threshold, False otherwise.
+            True if both the "max" and "min" In Range values are below the threshold,
+                False otherwise.
         """
         if not in_range_threshold:
             in_range_threshold = NONIUS_IN_RANGE_RECOMMENDED_MAX_PERCENT
@@ -403,9 +404,9 @@ class _SingleEncoderCalibration:
             )
 
         # -- Convergence check / apply corrections --
+        self.last_analyze_result = analyze_result
         if self.is_converged(analyze_result):
             self.converged = True
-            self.last_analyze_result = analyze_result
             logger.info(f"Encoder {self.number}: converged at iteration {iteration}.")
 
             # Check InRange
