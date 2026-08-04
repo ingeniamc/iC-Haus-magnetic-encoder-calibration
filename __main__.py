@@ -283,7 +283,11 @@ def main() -> None:
     all_ok = True
     for enc_num, result in results.items():
         status = "SUCCESS" if result.success else "FAILED"
-        logger.info(f"Encoder {enc_num}: {status} ({result.iterations} iterations)")
+        logger.info(
+            f"Encoder {enc_num}: {status} ({result.iterations} iterations) "
+            f"(InRange %: Max={result.nonius_in_range_max:.2f}%, "
+            f"Min={result.nonius_in_range_min:.2f}%)"
+        )
         if not result.success:
             all_ok = False
 
