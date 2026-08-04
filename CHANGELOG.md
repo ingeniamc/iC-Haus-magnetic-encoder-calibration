@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+### Added
+- InRange values to calibration output and --force-in-range flag. 
+
+
 ## [0.1.3] - 2026-07-29
 ### Added
 - Add support for python to 3.9.
