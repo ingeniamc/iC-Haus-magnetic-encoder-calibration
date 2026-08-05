@@ -701,13 +701,23 @@ class EncoderCalibrator:
 
         Returns:
             Mapping of encoder number to list of packed register values.
+
+        Raises:
+            RuntimeError: If the PDO exchange thread has raised an exception.
+
         """
         # Start collecting
         with self._pdo_lock:
             self._pdo_buffer.clear()
         self._pdo_collecting = True
 
-        time.sleep(self._capture_duration)
+        elapsed = 0.0
+        poll = 0.5
+        while elapsed < self._capture_duration:
+            if self._motor.pdo_exception is not None:
+                raise RuntimeError(f"PDO exchange died: {self._motor.pdo_exception}")
+            time.sleep(poll)
+            elapsed += poll
 
         # Stop collecting and drain buffer
         self._pdo_collecting = False
