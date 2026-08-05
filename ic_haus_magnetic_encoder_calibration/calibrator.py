@@ -711,16 +711,20 @@ class EncoderCalibrator:
             self._pdo_buffer.clear()
         self._pdo_collecting = True
 
-        elapsed = 0.0
-        poll = 0.5
-        while elapsed < self._capture_duration:
-            if self._motor.pdo_exception is not None:
-                raise RuntimeError(f"PDO exchange died: {self._motor.pdo_exception}")
-            time.sleep(poll)
-            elapsed += poll
+        try:
+            elapsed_time = 0.0
+            pdo_exception_interval = 0.5
+            while elapsed_time < self._capture_duration:
+                if self._motor.pdo_exception is not None:
+                    raise RuntimeError(f"PDO exchange died: {self._motor.pdo_exception}")
+                time.sleep(pdo_exception_interval)
+                elapsed_time += pdo_exception_interval
 
-        # Stop collecting and drain buffer
-        self._pdo_collecting = False
+        finally:
+            # Stop collecting and drain buffer
+            self._pdo_collecting = False
+
+        # Clear buffer
         with self._pdo_lock:
             samples = list(self._pdo_buffer)
             self._pdo_buffer.clear()
