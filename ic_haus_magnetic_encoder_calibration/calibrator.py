@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 # Default data acquisition parameters
 DEFAULT_CAPTURE_DURATION_S = 30.0
 DEFAULT_PDO_RATE_S = 0.001  # 1 ms
+DEFAULT_PDO_EXCEPTION_INTERVAL_S = 0.5
 
 # iC-MU AN3 "CALIBRATION" step 18 recommends keeping both Nonius "In Range"
 # values below 60% (i.e. at least 40% margin to either side).
@@ -713,7 +714,7 @@ class EncoderCalibrator:
 
         try:
             elapsed_time = 0.0
-            pdo_exception_interval = 0.5
+            pdo_exception_interval = min(DEFAULT_PDO_EXCEPTION_INTERVAL_S, self._capture_duration)
             while elapsed_time < self._capture_duration:
                 if self._motor.pdo_exception is not None:
                     raise RuntimeError(f"PDO exchange died: {self._motor.pdo_exception}")
