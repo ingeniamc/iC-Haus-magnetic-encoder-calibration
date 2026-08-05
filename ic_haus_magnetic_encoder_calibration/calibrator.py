@@ -141,7 +141,14 @@ class _SingleEncoderCalibration:
     # -- Setup phases --
 
     def save_state(self) -> None:
-        """Phase 1: Apply configuration, read revision, save configs."""
+        """Phase 1: Apply configuration, read revision, save configs.
+
+        Raises:
+            ValueError: If the encoder is not configured for BiSS-C protocol.
+
+        """
+        if not self.enc.is_bissc:
+            raise ValueError(f"Encoder {self.number} is not set as a BiSS-C sensor.")
         self.enc.apply_config()
         revision = self.enc.read_revision()
         self.saved_drive_config = self.enc.get_drive_config()
@@ -441,8 +448,8 @@ class _SingleEncoderCalibration:
                 except RuntimeError:
                     logger.error(f"Encoder {self.number}: could not save configuration to EEPROM.")
 
-            # Perform an internal reset of the encoder
-            self.enc.abs_reset()
+                # Perform an internal reset of the encoder
+                self.enc.abs_reset()
 
             if self.saved_drive_config is None:
                 logger.warning(f"Encoder {self.number}: no saved drive config to restore.")
