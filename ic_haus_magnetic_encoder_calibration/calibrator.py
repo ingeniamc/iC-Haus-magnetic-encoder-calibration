@@ -722,10 +722,10 @@ class EncoderCalibrator:
                 elapsed_time += pdo_exception_interval
 
         finally:
-            # Stop collecting and drain buffer
+            # Stop collecting
             self._pdo_collecting = False
 
-        # Clear buffer
+        # Drain and clear buffer
         with self._pdo_lock:
             samples = list(self._pdo_buffer)
             self._pdo_buffer.clear()
