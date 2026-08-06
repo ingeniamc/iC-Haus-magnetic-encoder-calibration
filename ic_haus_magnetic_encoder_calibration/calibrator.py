@@ -39,6 +39,7 @@ from .encoder import (
 from .motor_control import DEFAULT_GEN_CURRENT, DEFAULT_GEN_FREQ, MotorControl
 from .plotting import (
     RESIDUAL_THRESHOLD,
+    _plot_nonius_track_offset_table,
     _plot_raw_waveforms,
     _plot_residuals_bar,
     _plot_residuals_trend,
@@ -116,6 +117,7 @@ class _SingleEncoderCalibration:
         self.residual_history: list[list[float]] = []
         self.iteration_log: list[dict[str, object]] = []
         self.last_analyze_result: Optional[mu_3sl.AnalyzeResult] = None
+        self.last_raw_data: Optional[tuple[list[int], list[int]]] = None
 
     @property
     def number(self) -> int:
@@ -413,6 +415,7 @@ class _SingleEncoderCalibration:
 
         # -- Convergence check / apply corrections --
         self.last_analyze_result = analyze_result
+        self.last_raw_data = (master_raw, nonius_raw)
         if self.is_converged(analyze_result):
             self.converged = True
             logger.info(f"Encoder {self.number}: converged at iteration {iteration}.")
@@ -493,14 +496,22 @@ class _SingleEncoderCalibration:
         nonius_table = analyze_result.optimized_nonius_track_offset_table()
         cal.set_current_nonius_track_offset_table(nonius_table)
         table_params = mu_3sl.nonius_track_offset_table_parameters(nonius_table)
+        spo_n = [table_params.spo_n[i] for i in range(15)]
+        logger.info(f"SPO base={table_params.spo_base} spo_n={spo_n}")
         enc.write_nonius_parameters(table_params)
 
-        # Apply the final analog adjustments to the iC-MU registers (in raw mode).
+        # Re-analyze the same raw data with the SPO table applied, so the nonius
+        # curves and the InRange % reflect the final configuration.
+        if self.last_raw_data is not None:
+            master_raw, nonius_raw = self.last_raw_data
+            cal.preconfigure_number_of_master_periods(self.n_master_periods)
+            analyze_result = cal.analyze_raw_data(master_raw, nonius_raw)
+            analyze_result.optimized_nonius_track_offset_table()  # populate curve buffers
+            self.last_analyze_result = analyze_result
+
+        # Get final analog adjustments and InRange values for the result.
         final_master = cal.analog_master_track_adjustments()
         final_nonius = cal.analog_nonius_track_adjustments()
-        spo_n = [table_params.spo_n[i] for i in range(15)]
-
-        # Get InRange%
         nonius_in_range = self.get_nonius_in_range(analyze_result)
 
         return CalibrationResult(
@@ -838,8 +849,7 @@ class EncoderCalibrator:
                                 f" {self._max_iterations} iterations."
                                 f" Skipping EEPROM save.",
                             )
-                            last_analyze_result = enc.last_analyze_result
-                            if last_analyze_result is None:
+                            if enc.last_analyze_result is None:
                                 in_range_max = in_range_min = 0.0
                             else:
                                 in_range = enc.get_nonius_in_range(enc.last_analyze_result)
@@ -850,6 +860,33 @@ class EncoderCalibrator:
                                 iterations=enc.iteration_count,
                                 nonius_in_range_max=in_range_max,
                                 nonius_in_range_min=in_range_min,
+                            )
+
+                        last_analyze_result = enc.last_analyze_result
+                        # Plot nonius track offset table for the last iteration (even if not converged)
+                        if last_analyze_result is not None:
+                            phase_error = last_analyze_result.nonius_phase_errors()
+                            track_offset_curve = last_analyze_result.nonius_track_offset_curve()
+                            phase_margin = last_analyze_result.nonius_phase_margin()
+                            single_turn_position = last_analyze_result.nonius_position(
+                                mu_3sl.Unit.DEGREE, False
+                            )
+                            continuous_single_turn_position = last_analyze_result.nonius_position(
+                                mu_3sl.Unit.DEGREE, True
+                            )
+                            # TODO: Optimize this
+                            in_range = enc.get_nonius_in_range(last_analyze_result)
+                            _plot_nonius_track_offset_table(
+                                encoder=enc.number,
+                                phase_error=phase_error,
+                                track_offset_curve=track_offset_curve,
+                                phase_margin=phase_margin,
+                                single_turn_position=single_turn_position,
+                                continuous_single_turn_position=continuous_single_turn_position,
+                                nonius_phase_range_limit=in_range.range_limit,
+                                nonius_phase_margin_max=in_range.margin_max,
+                                nonius_phase_margin_min=in_range.margin_min,
+                                output_dir=self._output_dir,
                             )
 
                 return results
