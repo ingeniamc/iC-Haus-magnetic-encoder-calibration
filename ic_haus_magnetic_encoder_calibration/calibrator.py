@@ -902,3 +902,107 @@ class EncoderCalibrator:
         finally:
             for enc in encoders:
                 enc.restore_state()
+
+    def calculate_in_range(self) -> None:
+        """Calculate the Nonius InRange value for all enrolled encoders.
+
+        Gathers a single batch of raw data and analyzes it to compute the Nonius InRange value
+        for each encoder, but does not apply any analog adjustments or save to EEPROM,
+        allowing for evaluation of the current encoder configuration
+        without performing full calibration.
+
+
+        Raises:
+            RuntimeError: If no encoders have been registered.
+        """
+        if not self._encoders:
+            msg = "No encoders registered. Call add_encoder() first."
+            raise RuntimeError(msg)
+
+        encoders = [_SingleEncoderCalibration(enc) for enc in self._encoders]
+
+        try:
+            # -- Setup phase 1: save state --
+            for enc in encoders:
+                enc.save_state()
+
+            # -- Setup phase 2: calibration mode --
+            for enc in encoders:
+                enc.enter_calibration_mode()
+
+            # -- Clean output directory --
+            if self._output_dir.exists():
+                shutil.rmtree(self._output_dir)
+            self._output_dir.mkdir(parents=True, exist_ok=True)
+
+            # -- Setup phase 4: data TPDO (register on servo) --
+            # Must be registered BEFORE FSoE maps so that the TPDO dict
+            # insertion order (0x1A00, then 0x1B00) matches the sorted
+            # index order used by _process_tpdo() when parsing the
+            # process data buffer.
+            # https://novantamotion.atlassian.net/browse/INGK-1257
+            warm_matplotlib_cache(interactive=self._interactive_plots)
+            self._setup_data_tpdo()
+
+            # -- Setup phase 5: FSoE (maps only, no PDO start) --
+            if self._motor.has_fsoe:
+                self._motor.prepare_fsoe()
+
+            # -- Setup phase 6: activate all PDOs together --
+            self._motor.activate_pdos(refresh_rate=self._pdo_rate)
+
+            try:
+                # -- Motor runs for the entire calibration session --
+                with self._motor.motor_spinning():
+                    raw_data = self._acquire_raw_data()
+                    if not raw_data:
+                        logger.warning(
+                            "0 samples captured.",
+                        )
+                        raise RuntimeError("No samples captured. PDO exchange may have died.")
+
+                    # -- Finalize converged encoders --
+                    for enc in encoders:
+                        samples = raw_data.get(enc.number, [])
+                        if not samples:
+                            logger.warning(f"Encoder {enc.number}: 0 samples captured.")
+                            raise RuntimeError("No samples captured. PDO exchange may have died.")
+
+                        # Unpack packed register values into master / nonius tracks.
+                        master_raw: list[int] = []
+                        nonius_raw: list[int] = []
+                        for val in samples:
+                            m, n = split_raw_payload(val)
+                            master_raw.append(m)
+                            nonius_raw.append(n)
+
+                        # B1 fix: sync DLL with current chip state
+                        master_adj, nonius_adj = enc.enc.read_analog_adjustments()
+                        enc.cal.set_current_analog_track_adjustments(master_adj, nonius_adj)
+
+                        # Reinforce MPC hint so the library doesn't re-detect a wrong count.
+                        enc.cal.preconfigure_number_of_master_periods(enc.n_master_periods)
+
+                        analyze_result = enc.cal.analyze_raw_data(master_raw, nonius_raw)
+                        in_range = enc.get_nonius_in_range(analyze_result)
+                        logger.info(
+                            f"Encoder {enc.number} nonius in range: "
+                            f"Max={in_range.in_range_max:.1f}%, Min={in_range.in_range_min:.1f}%, "
+                            f"Phase margin max={in_range.margin_max}, "
+                            f"Phase margin min={in_range.margin_min}, "
+                            f"Phase range limit={in_range.range_limit}",
+                        )
+
+                return
+
+            finally:
+                if self._save_json:
+                    for enc in encoders:
+                        enc.export_data(self._output_dir)
+                # Stop PDOs first (returns slave to pre-op), then remove maps.
+                self._motor.stop_pdos_and_fsoe()
+                self._teardown_data_tpdo()
+
+        finally:
+            for enc in encoders:
+                enc.restore_state()

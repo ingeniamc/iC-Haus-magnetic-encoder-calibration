@@ -225,6 +225,11 @@ def parse_args() -> argparse.Namespace:
             "as the threshold."
         ),
     )
+    parser.add_argument(
+        "--only-in-range",
+        action="store_true",
+        help="Only calculate the Nonius InRange value without performing calibration",
+    )
     return parser.parse_args()
 
 
@@ -283,18 +288,27 @@ def main() -> None:
 
     calibrator.configure_drive_encoders()
 
-    results = calibrator.calibrate()
-
-    all_ok = True
-    for enc_num, result in results.items():
-        status = "SUCCESS" if result.success else "FAILED"
-        logger.info(
-            f"Encoder {enc_num}: {status} ({result.iterations} iterations) "
-            f"(InRange %: Max={result.nonius_in_range_max:.2f}%, "
-            f"Min={result.nonius_in_range_min:.2f}%)"
+    if args.only_in_range:
+        logger.warning(
+            "The --only-in-range option is used. NO calibration will be performed. "
+            "Only the Nonius InRange value will be calculated."
         )
-        if not result.success:
-            all_ok = False
+        calibrator.calculate_in_range()
+        all_ok = True
+
+    else:
+        results = calibrator.calibrate()
+
+        all_ok = True
+        for enc_num, result in results.items():
+            status = "SUCCESS" if result.success else "FAILED"
+            logger.info(
+                f"Encoder {enc_num}: {status} ({result.iterations} iterations) "
+                f"(InRange %: Max={result.nonius_in_range_max:.2f}%, "
+                f"Min={result.nonius_in_range_min:.2f}%)"
+            )
+            if not result.success:
+                all_ok = False
 
     sys.exit(0 if all_ok else 1)
 
