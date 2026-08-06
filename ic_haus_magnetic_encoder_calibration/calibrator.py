@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 # Default data acquisition parameters
 DEFAULT_CAPTURE_DURATION_S = 30.0
 DEFAULT_PDO_RATE_S = 0.001  # 1 ms
+DEFAULT_PDO_EXCEPTION_INTERVAL_S = 0.5
 
 # iC-MU AN3 "CALIBRATION" step 18 recommends keeping both Nonius "In Range"
 # values below 60% (i.e. at least 40% margin to either side).
@@ -141,7 +142,14 @@ class _SingleEncoderCalibration:
     # -- Setup phases --
 
     def save_state(self) -> None:
-        """Phase 1: Apply configuration, read revision, save configs."""
+        """Phase 1: Apply configuration, read revision, save configs.
+
+        Raises:
+            ValueError: If the encoder is not configured for BiSS-C protocol.
+
+        """
+        if not self.enc.is_bissc:
+            raise ValueError(f"Encoder {self.number} is not set as a BiSS-C sensor.")
         self.enc.apply_config()
         revision = self.enc.read_revision()
         self.saved_drive_config = self.enc.get_drive_config()
@@ -441,8 +449,8 @@ class _SingleEncoderCalibration:
                 except RuntimeError:
                     logger.error(f"Encoder {self.number}: could not save configuration to EEPROM.")
 
-            # Perform an internal reset of the encoder
-            self.enc.abs_reset()
+                # Perform an internal reset of the encoder
+                self.enc.abs_reset()
 
             if self.saved_drive_config is None:
                 logger.warning(f"Encoder {self.number}: no saved drive config to restore.")
@@ -694,16 +702,30 @@ class EncoderCalibrator:
 
         Returns:
             Mapping of encoder number to list of packed register values.
+
+        Raises:
+            RuntimeError: If the PDO exchange thread has raised an exception.
+
         """
         # Start collecting
         with self._pdo_lock:
             self._pdo_buffer.clear()
         self._pdo_collecting = True
 
-        time.sleep(self._capture_duration)
+        try:
+            elapsed_time = 0.0
+            pdo_exception_interval = min(DEFAULT_PDO_EXCEPTION_INTERVAL_S, self._capture_duration)
+            while elapsed_time < self._capture_duration:
+                if self._motor.pdo_exception is not None:
+                    raise RuntimeError(f"PDO exchange died: {self._motor.pdo_exception}")
+                time.sleep(pdo_exception_interval)
+                elapsed_time += pdo_exception_interval
 
-        # Stop collecting and drain buffer
-        self._pdo_collecting = False
+        finally:
+            # Stop collecting
+            self._pdo_collecting = False
+
+        # Drain and clear buffer
         with self._pdo_lock:
             samples = list(self._pdo_buffer)
             self._pdo_buffer.clear()

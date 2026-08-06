@@ -1,3 +1,5 @@
+from collections import deque
+
 import mu_3sl_interface as mu_3sl
 import pytest
 from ingeniamotion.enums import SensorType
@@ -7,7 +9,7 @@ from ic_haus_magnetic_encoder_calibration.calibrator import (
     _SingleEncoderCalibration,
 )
 from ic_haus_magnetic_encoder_calibration.config_loader import EncoderRegisterConfig
-from ic_haus_magnetic_encoder_calibration.encoder import split_raw_payload
+from ic_haus_magnetic_encoder_calibration.encoder import Encoder, split_raw_payload
 
 
 class TestSplitRawPayload:
@@ -151,6 +153,7 @@ def _make_not_converged_analyze_result(mocker):
 
 def _patch_encoder(enc, mocker):
     """Mock all Encoder methods used by calibrate() to avoid real BiSS calls."""
+    mocker.patch.object(type(enc), "is_bissc", new_callable=mocker.PropertyMock, return_value=True)
     mocker.patch.object(enc, "read_revision", return_value=mocker.MagicMock(name="REV"))
     mocker.patch.object(enc, "get_drive_config", return_value=mocker.MagicMock(name="DriveConfig"))
     mocker.patch.object(enc, "get_ic_config", return_value=mocker.MagicMock(name="ICConfig"))
@@ -726,3 +729,100 @@ class TestCalibrateNonConvergenceInRange:
 
         assert results[1].success is False
         assert results[1].nonius_in_range_max == pytest.approx(40.0)
+
+
+class TestSaveStateProtocolGuard:
+    """Calibration requires BiSS-C: raw-mode framing is meaningless otherwise."""
+
+    def test_raises_when_not_bissc(self, mocker, mock_encoder_config, mock_mc) -> None:
+        """A non-BiSS-C sensor must be rejected before any register is touched."""
+        enc = Encoder(mock_mc, SensorType.ABS1, axis=1, config=mock_encoder_config)
+        mocker.patch.object(
+            type(enc), "is_bissc", new_callable=mocker.PropertyMock, return_value=False
+        )
+        mocker.patch.object(enc, "apply_config")
+        sec = _SingleEncoderCalibration(enc)
+
+        with pytest.raises(ValueError, match="not set as a BiSS-C sensor"):
+            sec.save_state()
+
+        # The guard must short-circuit: no configuration may be written.
+        enc.apply_config.assert_not_called()
+
+
+class TestAcquireRawData:
+    """PDO exchange failures must abort acquisition instead of returning empty data."""
+
+    @pytest.fixture
+    def fast_calibrator(self, mock_mc, tmp_path, mocker):
+        """Calibrator with a short capture window and no real sleeping.
+
+        Returns:
+            An EncoderCalibrator whose acquisition loop runs instantly.
+        """
+        mocker.patch("ic_haus_magnetic_encoder_calibration.calibrator.time.sleep")
+        return EncoderCalibrator(
+            mock_mc, axis=1, max_iterations=1, output_dir=tmp_path, capture_duration=1.0
+        )
+
+    def test_raises_when_pdo_thread_died(
+        self, fast_calibrator, mocker, mock_encoder_config
+    ) -> None:
+        """A dead PDO exchange yields silently truncated data, so it must raise instead."""
+        fast_calibrator.add_encoder(SensorType.ABS1, mock_encoder_config)
+        mocker.patch.object(
+            type(fast_calibrator._motor),
+            "pdo_exception",
+            new_callable=mocker.PropertyMock,
+            return_value=RuntimeError("slave lost"),
+        )
+
+        with pytest.raises(RuntimeError, match="PDO exchange died: slave lost"):
+            fast_calibrator._acquire_raw_data()
+
+    def test_stops_collecting_when_pdo_thread_died(
+        self, fast_calibrator, mocker, mock_encoder_config
+    ) -> None:
+        """The collecting flag must not stay latched after an aborted acquisition,
+        otherwise the callback keeps appending into a stale buffer."""
+        fast_calibrator.add_encoder(SensorType.ABS1, mock_encoder_config)
+        mocker.patch.object(
+            type(fast_calibrator._motor),
+            "pdo_exception",
+            new_callable=mocker.PropertyMock,
+            return_value=RuntimeError("slave lost"),
+        )
+
+        with pytest.raises(RuntimeError):
+            fast_calibrator._acquire_raw_data()
+
+        assert fast_calibrator._pdo_collecting is False
+
+    def test_returns_per_encoder_columns_on_success(
+        self, mock_mc, tmp_path, mocker, mock_encoder_config
+    ) -> None:
+        """Row-major PDO samples are transposed into one column per encoder."""
+        cal = EncoderCalibrator(
+            mock_mc, axis=1, max_iterations=1, output_dir=tmp_path, capture_duration=1.0
+        )
+        cal.add_encoder(SensorType.ABS1, mock_encoder_config)
+        cal.add_encoder(SensorType.SSI2, mock_encoder_config)
+        mocker.patch.object(
+            type(cal._motor),
+            "pdo_exception",
+            new_callable=mocker.PropertyMock,
+            return_value=None,
+        )
+
+        # The buffer is cleared on entry, so frames must be injected *during* the
+        # capture window. Each patched sleep stands in for one PDO callback.
+        # capture_duration=1.0 with a 0.5 s poll -> exactly two sleeps.
+        frames = deque([[10, 20], [11, 21]])
+        mocker.patch(
+            "ic_haus_magnetic_encoder_calibration.calibrator.time.sleep",
+            side_effect=lambda _s: cal._pdo_buffer.append(frames.popleft()),
+        )
+
+        result = cal._acquire_raw_data()
+
+        assert result == {1: [10, 11], 2: [20, 21]}

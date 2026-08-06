@@ -3,6 +3,15 @@ from ingeniamotion.enums import SensorType
 
 from ic_haus_magnetic_encoder_calibration.config_loader import EncoderRegisterConfig
 from ic_haus_magnetic_encoder_calibration.drive_encoder_registers import (
+    CALIB_ERROR_TOLERANCE,
+    CALIB_FRAME_SIZE,
+    CALIB_FRAME_TYPE,
+    CALIB_POLARITY,
+    CALIB_POS_BITS,
+    CALIB_POS_OFFSET,
+    CALIB_POS_ST_BITS,
+    CALIB_POS_START_BIT,
+    CALIB_PROTOCOL,
     ENCODER_1_REGS,
 )
 from ic_haus_magnetic_encoder_calibration.encoder import (
@@ -75,6 +84,22 @@ class TestReadRevision:
 
 
 class TestConfigureInCalibrationMode:
+    @staticmethod
+    def _drive_writes(mock_mc) -> dict:
+        """Collect drive-register writes as {register_name: value}.
+
+        iC-MU writes go through itf_data, so filter them out by register name.
+
+        Returns:
+            Mapping of drive register name to the value written.
+        """
+        ic_regs = {ENCODER_1_REGS.itf_ctl, ENCODER_1_REGS.itf_addr, ENCODER_1_REGS.itf_data}
+        return {
+            c.args[0]: c.args[1]
+            for c in mock_mc.communication.set_register.call_args_list
+            if c.args[0] not in ic_regs
+        }
+
     def test_mpc_0x0c_reduced_to_0x0b(self, encoder, mock_mc) -> None:
         """MPC=0x0C is a special case that must be reduced to 0x0B."""
         mock_mc.communication.get_register.side_effect = [
@@ -91,6 +116,45 @@ class TestConfigureInCalibrationMode:
         n_periods = encoder.configure_in_calibration_mode()
 
         assert n_periods == 2048
+
+    def test_writes_all_calibration_frame_registers(self, encoder, mock_mc) -> None:
+        """All 8 frame registers must be programmed -- a missing one leaves the drive
+        decoding the raw payload with the previous (non-raw) geometry. DR3256AC-937."""
+        mock_mc.communication.get_register.return_value = 0x0B  # MPC already valid
+        r = ENCODER_1_REGS
+
+        encoder.configure_in_calibration_mode()
+
+        writes = self._drive_writes(mock_mc)
+        assert writes == {
+            r.frame_size: CALIB_FRAME_SIZE,
+            r.frame_type: CALIB_FRAME_TYPE,
+            r.pos_bits: CALIB_POS_BITS,
+            r.pos_st_bits: CALIB_POS_ST_BITS,
+            r.pos_start_bit: CALIB_POS_START_BIT,
+            r.pos_offset: CALIB_POS_OFFSET,
+            r.polarity: CALIB_POLARITY,
+            r.error_tolerance: CALIB_ERROR_TOLERANCE,
+        }
+
+    def test_error_tolerance_written_after_frame_geometry(self, encoder, mock_mc) -> None:
+        """Tolerance must be raised *after* the geometry change, otherwise the drive
+        can freeze POS_VALUE on the transient CRC mismatch it causes."""
+        mock_mc.communication.get_register.return_value = 0x0B
+        r = ENCODER_1_REGS
+
+        encoder.configure_in_calibration_mode()
+
+        order = list(self._drive_writes(mock_mc))
+        assert order[-1] == r.error_tolerance
+
+    def test_mpc_below_0x0c_is_left_untouched(self, encoder, mock_mc) -> None:
+        """Only MPC=0x0C is illegal for raw capture; other values must be preserved."""
+        mock_mc.communication.get_register.return_value = 0x0A  # MPC = 10
+
+        n_periods = encoder.configure_in_calibration_mode()
+
+        assert n_periods == 1024  # 2 ** 10, i.e. MPC was not rewritten
 
 
 class TestSaveToEeprom:
@@ -134,6 +198,54 @@ class TestGetICConfig:
             if c.args[0] == ENCODER_1_REGS.itf_data
         ]
         assert data_writes == [0x80, 0x02, 0xCE, 0x20, 0x00, 0x05, 0x00]
+
+
+class TestGetDriveConfig:
+    """Drive frame save/restore data integrity (mocked -- runs in CI)."""
+
+    def test_roundtrip_preserves_values(self, encoder, mock_mc) -> None:
+        """get_drive_config -> set_drive_config writes back the exact same values,
+        in the same register order, for all 8 fields."""
+        # Distinct values so a field swapped with its neighbour is detectable.
+        mock_mc.communication.get_register.side_effect = [
+            36,  # frame_size
+            0,  # frame_type
+            28,  # pos_bits
+            27,  # pos_st_bits
+            8,  # pos_start_bit
+            1,  # pos_offset
+            1,  # polarity
+            0x1234,  # error_tolerance
+        ]
+        config = encoder.get_drive_config()
+
+        mock_mc.communication.set_register.reset_mock()
+        encoder.set_drive_config(config)
+
+        r = ENCODER_1_REGS
+        writes = [(c.args[0], c.args[1]) for c in mock_mc.communication.set_register.call_args_list]
+        assert writes == [
+            (r.frame_size, 36),
+            (r.frame_type, 0),
+            (r.pos_bits, 28),
+            (r.pos_st_bits, 27),
+            (r.pos_start_bit, 8),
+            (r.pos_offset, 1),
+            (r.polarity, 1),
+            (r.error_tolerance, 0x1234),
+        ]
+
+
+class TestIsBissc:
+    def test_true_for_bissc_protocol(self, encoder, mock_mc) -> None:
+        """Protocol register value 0 identifies BiSS-C."""
+        mock_mc.communication.get_register.return_value = CALIB_PROTOCOL
+        assert encoder.is_bissc is True
+
+    def test_false_for_other_protocol(self, encoder, mock_mc) -> None:
+        """Any other protocol (e.g. SSI) must not be treated as BiSS-C."""
+        mock_mc.communication.get_register.return_value = CALIB_PROTOCOL + 1
+        assert encoder.is_bissc is False
 
 
 # ---------------------------------------------------------------------------

@@ -192,7 +192,12 @@ def parse_args() -> argparse.Namespace:
         "--drive-config",
         type=Path,
         default=None,
-        help="Path to an XCF configuration file to load onto the drive before calibration",
+        help=(
+            "Path to an XCF configuration file to load onto the drive before calibration. "
+            "During calibration, the drive configuration will be temporarily modified to "
+            "set the required BiSS-C frame geometry for drive-encoder communication. "
+            "The original configuration will be restored once calibration is complete."
+        ),
     )
     parser.add_argument(
         "--encoder-config",
