@@ -298,6 +298,14 @@ class _SingleEncoderCalibration:
             )
             raise RuntimeError("No samples captured. PDO exchange may have died.")
 
+        # -- Iteration phase1: Write current analog parameters to the calibration object --
+        # Get current analog parameters from chip and set them in the calibration object
+        master_adj, nonius_adj = self.enc.read_analog_adjustments()
+        self.cal.set_current_analog_track_adjustments(master_adj, nonius_adj)
+        # Reinforce MPC hint so the library doesn't re-detect a wrong count.
+        self.cal.preconfigure_number_of_master_periods(self.n_master_periods)
+
+        # -- Iteration phase2: Analyze raw data --
         # Unpack packed register values into master / nonius tracks.
         master_raw: list[int] = []
         nonius_raw: list[int] = []
@@ -305,17 +313,11 @@ class _SingleEncoderCalibration:
             m, n = split_raw_payload(val)
             master_raw.append(m)
             nonius_raw.append(n)
-
-        # B1 fix: sync DLL with current chip state
-        master_adj, nonius_adj = self.enc.read_analog_adjustments()
-        self.cal.set_current_analog_track_adjustments(master_adj, nonius_adj)
-
-        # Reinforce MPC hint so the library doesn't re-detect a wrong count.
-        self.cal.preconfigure_number_of_master_periods(self.n_master_periods)
-
+        # Analyze raw data
         analyze_result = self.cal.analyze_raw_data(master_raw, nonius_raw)
 
-        # -- Diagnostics: logging --
+        # -- Iteration phase3: Read analog residuals --
+        # -- Diagnostics: logging analysis --
         ar = analyze_result
         logger.info(
             f"Encoder {self.number} iter {iteration} analysis: "
@@ -326,7 +328,7 @@ class _SingleEncoderCalibration:
             f"avg_samples/period={ar.average_number_of_samples_per_master_period():.1f}, "
             f"min_samples/period={ar.minimal_number_of_samples_per_master_period():.1f}",
         )
-
+        # -- Diagnostics: logging analog track adjustments/residuals --
         m_rel = analyze_result.relative_master_track_adjustments()
         n_rel = analyze_result.relative_nonius_track_adjustments()
         logger.info(
@@ -345,6 +347,7 @@ class _SingleEncoderCalibration:
             f"Max={in_range.in_range_max:.1f}%, Min={in_range.in_range_min:.1f}%",
         )
         self.residual_history.append(residuals)
+
         self.iteration_log.append({
             "iteration": iteration,
             "master_raw": master_raw,
@@ -504,7 +507,6 @@ class _SingleEncoderCalibration:
         # curves and the InRange % reflect the final configuration.
         if self.last_raw_data is not None:
             master_raw, nonius_raw = self.last_raw_data
-            cal.preconfigure_number_of_master_periods(self.n_master_periods)
             analyze_result = cal.analyze_raw_data(master_raw, nonius_raw)
             analyze_result.optimized_nonius_track_offset_table()  # populate curve buffers
             self.last_analyze_result = analyze_result
@@ -822,8 +824,10 @@ class EncoderCalibrator:
 
                         logger.info(f"--- Iteration {iteration} ---")
 
+                        # -- Acquire raw data from all encoders (blocking) --
                         raw_data = self._acquire_raw_data()
 
+                        # -- Process each encoder's raw data and perform analysis, logging, plotting, and correction --
                         for enc in pending:
                             enc.process_iteration(
                                 iteration,
