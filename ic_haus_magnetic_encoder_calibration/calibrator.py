@@ -992,8 +992,31 @@ class EncoderCalibrator:
                             f"Phase margin min={in_range.margin_min}, "
                             f"Phase range limit={in_range.range_limit}",
                         )
-
-                return
+                        enc.iteration_log.append({
+                            "master_raw": master_raw,
+                            "nonius_raw": nonius_raw,
+                            "analog_adjustments": {
+                                "master": {
+                                    "cosine_gain": int(master_adj.cosine_gain),
+                                    "sine_offset": int(master_adj.sine_offset),
+                                    "cosine_offset": int(master_adj.cosine_offset),
+                                    "phase": int(master_adj.phase),
+                                },
+                                "nonius": {
+                                    "cosine_gain": int(nonius_adj.cosine_gain),
+                                    "sine_offset": int(nonius_adj.sine_offset),
+                                    "cosine_offset": int(nonius_adj.cosine_offset),
+                                    "phase": int(nonius_adj.phase),
+                                },
+                            },
+                            "nonius phase margin": {
+                                "InRange max %": in_range.in_range_max,
+                                "InRange min %": in_range.in_range_min,
+                                "phase margin max": in_range.margin_max,
+                                "phase margin min": in_range.margin_min,
+                                "phase range limit": in_range.range_limit,
+                            },
+                        })
 
             finally:
                 if self._save_json:
