@@ -189,6 +189,13 @@ def parse_args() -> argparse.Namespace:
         help="Save JSON export of calibration data (default: true)",
     )
     parser.add_argument(
+        "--save-nonius-track",
+        type=_parse_bool,
+        default=False,
+        metavar="BOOL",
+        help="Save nonius track plots (default: false)",
+    )
+    parser.add_argument(
         "--drive-config",
         type=Path,
         default=None,
@@ -268,6 +275,7 @@ def main() -> None:
         save_residual_bar_plots=args.save_residual_bar_plots,
         save_trend_plot=args.save_trend_plot,
         save_json=args.save_json,
+        save_nonius_track=args.save_nonius_track,
         force_in_range=args.force_in_range,
     )
 

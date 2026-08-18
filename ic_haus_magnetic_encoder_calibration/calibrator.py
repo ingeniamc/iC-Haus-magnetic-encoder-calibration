@@ -500,16 +500,15 @@ class _SingleEncoderCalibration:
         cal.set_current_nonius_track_offset_table(nonius_table)
         table_params = mu_3sl.nonius_track_offset_table_parameters(nonius_table)
         spo_n = [table_params.spo_n[i] for i in range(15)]
-        logger.info(f"SPO base={table_params.spo_base} spo_n={spo_n}")
         enc.write_nonius_parameters(table_params)
 
         # Re-analyze the same raw data with the SPO table applied, so the nonius
         # curves and the InRange % reflect the final configuration.
-        if self.last_raw_data is not None:
-            master_raw, nonius_raw = self.last_raw_data
-            analyze_result = cal.analyze_raw_data(master_raw, nonius_raw)
-            analyze_result.optimized_nonius_track_offset_table()  # populate curve buffers
-            self.last_analyze_result = analyze_result
+        assert self.last_raw_data is not None
+        last_master_raw, last_nonius_raw = self.last_raw_data
+        analyze_result = cal.analyze_raw_data(last_master_raw, last_nonius_raw)
+        analyze_result.optimized_nonius_track_offset_table()  # populate curve buffers
+        self.last_analyze_result = analyze_result
 
         # Get final analog adjustments and InRange values for the result.
         final_master = cal.analog_master_track_adjustments()
@@ -548,6 +547,7 @@ class EncoderCalibrator:
         save_raw_plots: If True, save raw waveform plots for each iteration.
         save_residual_bar_plots: If True, save residual bar plots for each iteration.
         save_trend_plot: If True, save residuals trend plot (one per encoder).
+        save_nonius_track: If True, save nonius track plots.
         save_json: If True, save iteration logs as JSON files.
         force_in_range: If not None, treat Nonius In Range > force_in_range(%)
             as a calibration failure.
@@ -569,6 +569,7 @@ class EncoderCalibrator:
         save_residual_bar_plots: bool = False,
         save_trend_plot: bool = True,
         save_json: bool = True,
+        save_nonius_track: bool = False,
         force_in_range: Optional[float] = None,
     ) -> None:
         self._mc = mc
@@ -586,6 +587,7 @@ class EncoderCalibrator:
         self._save_residual_bar_plots = save_residual_bar_plots
         self._save_trend_plot = save_trend_plot
         self._save_json = save_json
+        self._save_nonius_track = save_nonius_track
         # PDO state
         self._tpdo_map: Optional[TPDOMap] = None
         self._padding_rpdo: Optional[RPDOMap] = None
@@ -868,7 +870,7 @@ class EncoderCalibrator:
 
                         last_analyze_result = enc.last_analyze_result
                         # Plot nonius track offset table for the last iteration (even if not converged)
-                        if last_analyze_result is not None:
+                        if self._save_nonius_track and last_analyze_result is not None:
                             phase_error = last_analyze_result.nonius_phase_errors()
                             track_offset_curve = last_analyze_result.nonius_track_offset_curve()
                             phase_margin = last_analyze_result.nonius_phase_margin()
@@ -888,8 +890,6 @@ class EncoderCalibrator:
                                 single_turn_position=single_turn_position,
                                 continuous_single_turn_position=continuous_single_turn_position,
                                 nonius_phase_range_limit=in_range.range_limit,
-                                nonius_phase_margin_max=in_range.margin_max,
-                                nonius_phase_margin_min=in_range.margin_min,
                                 output_dir=self._output_dir,
                             )
 
