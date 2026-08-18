@@ -61,25 +61,6 @@ def _positive_float(value: str) -> float:
     return number
 
 
-def _percentage(value: str) -> float:
-    """Ensure a percentage CLI argument value (0-100).
-
-    Args:
-        value: The string value to parse as a float.
-
-    Returns:
-        The parsed float percentage value (0-100).
-
-    Raises:
-        argparse.ArgumentTypeError: If the value is not a percentage between 0 and 100.
-    """
-    number = float(value)
-    if not (0 <= number <= 100):
-        msg = f"Expected a percentage between 0 and 100, got {value!r}"
-        raise argparse.ArgumentTypeError(msg)
-    return number
-
-
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for encoder calibration.
 
