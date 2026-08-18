@@ -2,7 +2,8 @@
 
 ## [Unreleased]
 ### Added
-- InRange values to calibration output and --force-in-range flag. 
+- `--save-nonius-track` flag for Nonius track plot generation.
+- InRange values to calibration output. 
 
 
 ## [0.1.3] - 2026-07-29
