@@ -199,21 +199,21 @@ def _plot_residuals_trend(
 
 def _plot_nonius_track_offset_table(
     encoder: int,
-    phase_error: list,
-    track_offset_curve: list,
-    phase_margin: list,
-    single_turn_position: list,
-    continuous_single_turn_position: list,
+    phase_error: list[int],
+    track_offset_curve: list[int],
+    phase_margin: list[int],
+    single_turn_position: list[float],
+    continuous_single_turn_position: list[float],
     nonius_phase_range_limit: int,
     output_dir: Path,
-):
+) -> None:
 
     if not phase_error or not track_offset_curve or not phase_margin:
         logger.warning(
             f"Encoder {encoder}: nonius curve data is empty; skipping plot. "
             "Did you call optimized_nonius_track_offset_table() first?"
         )
-        return None
+        return
 
     _ensure_backend(interactive=False)
 
@@ -229,7 +229,8 @@ def _plot_nonius_track_offset_table(
     nonius_curve_fig, (nonius_curve_plot, nonius_curve_continuous_plot) = plt.subplots(
         2, 1, figsize=(16, 9), layout="constrained"
     )
-    nonius_curve_fig.canvas.manager.set_window_title("Nonius Curves")
+    if nonius_curve_fig.canvas.manager is not None:
+        nonius_curve_fig.canvas.manager.set_window_title("Nonius Curves")
 
     for i in range(1, int(len(single_turns_start_index))):
         x = single_turn_position[
@@ -323,4 +324,3 @@ def _plot_nonius_track_offset_table(
 
     path = output_dir / f"enc{encoder}_nonius_curve.png"
     _save_and_show(nonius_curve_fig, path, interactive=False)
-    return path

@@ -11,7 +11,6 @@ from ingeniamotion.enums import SensorType
 from ic_haus_magnetic_encoder_calibration.calibrator import (
     DEFAULT_CAPTURE_DURATION_S,
     DEFAULT_PDO_RATE_S,
-    NONIUS_IN_RANGE_RECOMMENDED_MAX_PERCENT,
     EncoderCalibrator,
 )
 from ic_haus_magnetic_encoder_calibration.config_loader import load_encoders_configuration_file
@@ -217,21 +216,6 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable debug logging",
     )
-    parser.add_argument(
-        "--force-in-range",
-        type=_percentage,
-        nargs="?",
-        const=NONIUS_IN_RANGE_RECOMMENDED_MAX_PERCENT,
-        default=None,
-        metavar="PERCENT",
-        help=(
-            "Force calibration to keep iterating if the Nonius InRange value exceeds a "
-            "threshold. If omitted, the InRange value is not enforced. If given "
-            f"without a value, defaults to {NONIUS_IN_RANGE_RECOMMENDED_MAX_PERCENT:.0f}%%. "
-            "If given with a value (e.g. --force-in-range 70), that value is used "
-            "as the threshold."
-        ),
-    )
     return parser.parse_args()
 
 
@@ -276,7 +260,6 @@ def main() -> None:
         save_trend_plot=args.save_trend_plot,
         save_json=args.save_json,
         save_nonius_track=args.save_nonius_track,
-        force_in_range=args.force_in_range,
     )
 
     # Load encoder configurations from JSON file if provided
