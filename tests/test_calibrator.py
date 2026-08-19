@@ -600,19 +600,18 @@ class TestGetNoniusInRange:
         assert in_range.in_range_min == 30.0
 
 
-class TestIsInRange:
-    def _make_result(self, mocker, *, max_pct, min_pct, range_limit=1000):
-        """Create a mock AnalyzeResult with specified nonius phase margins and range limit.
+class TestNoniusInRangeValues:
+    def _make_result(self, mocker, *, max_pct, min_pct, range_limit=256):
+        """Create a mock AnalyzeResult with margins expressed as % of the range limit.
 
         Args:
             mocker: The pytest-mock fixture for creating mocks.
-            max_pct: The maximum nonius phase margin as a percentage of the range limit.
-            min_pct: The minimum nonius phase margin as a percentage of the range limit.
+            max_pct: Positive margin as a percentage of the range limit.
+            min_pct: Negative margin as a percentage of the range limit.
             range_limit: The nonius phase range limit.
 
         Returns:
-            A mock AnalyzeResult with the specified nonius phase margins and range limit.
-
+            A mock AnalyzeResult with the specified nonius phase margins.
         """
         result = mocker.MagicMock()
         result.nonius_phase_range_limit.return_value = range_limit
@@ -620,104 +619,72 @@ class TestIsInRange:
         result.nonius_phase_margin_min.return_value = -(min_pct / 100 * range_limit)
         return result
 
-    def test_within_default_threshold(self, mocker) -> None:
-        """Verify is_in_range when the nonius phase margins are within the default threshold."""
+    @pytest.mark.parametrize(
+        ("max_pct", "min_pct"),
+        [(50.0, 50.0), (70.0, 50.0), (50.0, 70.0), (70.0, 70.0), (0.0, 0.0), (100.0, 100.0)],
+    )
+    def test_percentages_match_margins(self, mocker, max_pct, min_pct) -> None:
+        """get_nonius_in_range() converts both margins to percentages of the range limit."""
         sec = _SingleEncoderCalibration(mocker.MagicMock(number=1))
-        result = self._make_result(mocker, max_pct=40, min_pct=40)
-        assert sec.is_in_range(result, None) is True
+        result = self._make_result(mocker, max_pct=max_pct, min_pct=min_pct)
 
-    def test_exceeds_default_threshold(self, mocker) -> None:
-        """Verify not is_in_range when the nonius phase margins exceed the default threshold."""
+        in_range = sec.get_nonius_in_range(result)
+
+        assert in_range.in_range_max == pytest.approx(max_pct)
+        assert in_range.in_range_min == pytest.approx(min_pct)
+
+    def test_returns_raw_margins_and_limit(self, mocker) -> None:
+        """The raw LSB margins and range limit are passed through unchanged."""
         sec = _SingleEncoderCalibration(mocker.MagicMock(number=1))
-        result = self._make_result(mocker, max_pct=70, min_pct=40)
-        assert sec.is_in_range(result, None) is False
+        result = self._make_result(mocker, max_pct=25, min_pct=75, range_limit=256)
 
-    def test_within_custom_threshold(self, mocker) -> None:
-        """Verify is_in_range when the nonius phase margins are within a custom threshold."""
-        sec = _SingleEncoderCalibration(mocker.MagicMock(number=1))
-        result = self._make_result(mocker, max_pct=65, min_pct=65)
-        assert sec.is_in_range(result, 70.0) is True
+        in_range = sec.get_nonius_in_range(result)
 
-    def test_exceeds_custom_threshold_max(self, mocker) -> None:
-        """Verify not is_in_range when the nonius phase margins exceed a custom threshold."""
-        sec = _SingleEncoderCalibration(mocker.MagicMock(number=1))
-        result = self._make_result(mocker, max_pct=75, min_pct=40)
-        assert sec.is_in_range(result, 70.0) is False
-
-    def test_exceeds_custom_threshold_min(self, mocker) -> None:
-        """Verify not is_in_range when the nonius phase margins exceed a custom threshold."""
-        sec = _SingleEncoderCalibration(mocker.MagicMock(number=1))
-        result = self._make_result(mocker, max_pct=40, min_pct=75)
-        assert sec.is_in_range(result, 70.0) is False
+        assert in_range.range_limit == 256
+        assert in_range.margin_max == pytest.approx(64)
+        assert in_range.margin_min == pytest.approx(-192)
 
 
-class TestCalibrateForceInRange:
-    """Nonius In Range enforcement via force_in_range."""
+class TestCalibrateInRange:
+    """In-range values are propagated on success and omitted on failure."""
 
-    def test_converged_exceeding_default_without_force_still_succeeds(
-        self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
-    ) -> None:
-        """Exceeding the 60% recommended default alone must not fail calibration."""
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
-        enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
-        _patch_encoder(enc, mocker)
+    def test_finalize_logs_and_reports_in_range(self, mocker, mu_3sl_mock, tmp_path) -> None:
+        """finalize() appends the nonius phase margin entry and fills CalibrationResult."""
+        enc = mocker.MagicMock(number=1)
+        sec = _SingleEncoderCalibration(enc)
+        sec.iteration_count = 2
 
-        conv = _make_converged_analyze_result(mocker)
+        conv = _make_converged_analyze_result(mocker)  # limit=1000, max=400, min=-400
         conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
-        conv.nonius_phase_margin_max.return_value = 700  # 70% > 60% default
-        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv])
+        cal_obj = mocker.MagicMock(name="Calibration")
+        cal_obj.analyze_raw_data.return_value = conv
+        sec._cal = cal_obj
+        sec.last_analyze_result = conv
+        sec.last_raw_data = ([1, 2, 3], [4, 5, 6])
 
-        results = cal.calibrate()
-
-        assert results[1].success is True
-        assert results[1].nonius_in_range_max == pytest.approx(70.0)
-
-    def test_converged_exceeding_forced_threshold_fails(
-        self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
-    ) -> None:
-        """Exceeding the forced threshold must fail calibration."""
-        cal = EncoderCalibrator(
-            mock_mc, axis=1, max_iterations=3, output_dir=tmp_path, force_in_range=50.0
+        mu_3sl_mock.nonius_track_offset_table_parameters.return_value = mocker.MagicMock(
+            spo_base=0,
+            spo_n=list(range(15)),
         )
-        enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
-        _patch_encoder(enc, mocker)
 
-        conv = _make_converged_analyze_result(mocker)
-        conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
-        conv.nonius_phase_margin_max.return_value = 700  # 70% > 50% forced
-        # Never satisfies the forced threshold -> stays "pending" every iteration.
-        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv, conv])
+        result = sec.finalize(tmp_path)
 
-        results = cal.calibrate()
+        entry = sec.iteration_log[-1]["nonius phase margin"]
+        assert entry["InRange max %"] == pytest.approx(40.0)
+        assert entry["InRange min %"] == pytest.approx(40.0)
+        assert entry["phase margin max"] == 400
+        assert entry["phase margin min"] == -400
+        assert entry["phase range limit"] == 1000
 
-        assert results[1].success is False
+        assert result.success is True
+        assert result.iterations == 2
+        assert result.nonius_in_range_max == pytest.approx(40.0)
+        assert result.nonius_in_range_min == pytest.approx(40.0)
 
-    def test_converged_within_forced_threshold_succeeds(
+    def test_in_range_is_none_when_not_converged(
         self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
     ) -> None:
-        """Converged calibration within the forced threshold must succeed."""
-        cal = EncoderCalibrator(
-            mock_mc, axis=1, max_iterations=3, output_dir=tmp_path, force_in_range=80.0
-        )
-        enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
-        _patch_encoder(enc, mocker)
-
-        conv = _make_converged_analyze_result(mocker)
-        conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
-        conv.nonius_phase_margin_max.return_value = 700  # 70% < 80% forced
-        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv])
-
-        results = cal.calibrate()
-
-        assert results[1].success is True
-
-
-class TestCalibrateNonConvergenceInRange:
-    def test_non_convergence_reports_in_range_without_crash(
-        self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
-    ) -> None:
-        """Regression test for AttributeError on enc.last_analyze_result=None
-        when an encoder never converges."""
+        """A failed calibration reports no in-range values."""
         cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
         _patch_encoder(enc, mocker)
@@ -725,10 +692,11 @@ class TestCalibrateNonConvergenceInRange:
         not_conv = _make_not_converged_analyze_result(mocker)
         _setup_converging_calibration(cal, mocker, mu_3sl_mock, [not_conv, not_conv, not_conv])
 
-        results = cal.calibrate()  # currently raises AttributeError
+        results = cal.calibrate()
 
         assert results[1].success is False
-        assert results[1].nonius_in_range_max == pytest.approx(40.0)
+        assert results[1].nonius_in_range_max is None
+        assert results[1].nonius_in_range_min is None
 
 
 class TestSaveStateProtocolGuard:
