@@ -208,7 +208,14 @@ def _plot_nonius_track_offset_table(
     output_dir: Path,
 ) -> None:
 
-    if not phase_error or not track_offset_curve or not phase_margin:
+    if (
+        not phase_error
+        or not track_offset_curve
+        or not phase_margin
+        or not single_turn_position
+        or not continuous_single_turn_position
+        or not nonius_phase_range_limit
+    ):
         logger.warning(
             f"Encoder {encoder}: nonius curve data is empty; skipping plot. "
             "Did you call optimized_nonius_track_offset_table() first?"
