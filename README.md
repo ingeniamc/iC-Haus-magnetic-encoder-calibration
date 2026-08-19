@@ -108,7 +108,7 @@ encoder's EEPROM.
 | `--save-raw-plots`           | `false`              | Save per-iteration raw waveform PNGs         |
 | `--save-residual-bar-plots`  | `false`              | Save per-iteration residual bar chart PNGs   |
 | `--save-trend-plot`          | `true`               | Save residuals trend PNG                     |
-| `--save-nonius-track`        | `false`              | Save nonius track plots PNG                  |
+| `--save-nonius-track`        | `false`              | Save nonius track plot PNGs                  |
 | `--save-json`                | `true`               | Export calibration data as JSON              |
 
 Run `python __main__.py --help` for the full list.
