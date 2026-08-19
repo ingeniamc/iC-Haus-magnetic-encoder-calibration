@@ -437,12 +437,18 @@ class _SingleEncoderCalibration:
 
         Returns:
             CalibrationResult with success status and iteration count.
+
+        Raises:
+            RuntimeError: If no analysis result is available for finalization.
+            RuntimeError: If no raw data is available for finalization.
+
         """
         enc = self.enc
         cal = self.cal
 
         # Use the last iteration's analysis result (no re-acquisition).
-        assert self.last_analyze_result is not None
+        if not self.last_analyze_result:
+            raise RuntimeError("No analysis result available for finalization.")
         analyze_result = self.last_analyze_result
 
         # Nonius SPO optimization
@@ -454,7 +460,8 @@ class _SingleEncoderCalibration:
 
         # Re-analyze the same raw data with the SPO table applied, so the nonius
         # curves and the InRange % reflect the final configuration.
-        assert self.last_raw_data is not None
+        if not self.last_raw_data:
+            raise RuntimeError("No raw data available for finalization.")
         last_master_raw, last_nonius_raw = self.last_raw_data
         analyze_result = cal.analyze_raw_data(last_master_raw, last_nonius_raw)
         analyze_result.optimized_nonius_track_offset_table()  # populate curve buffers
