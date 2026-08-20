@@ -155,8 +155,8 @@ class CalibrationResult:
     nonius_adjustments: Optional[mu_3sl.AnalogTrackAdjustments] = None
     spo_base: int = 0
     spo_n: list[int] = field(default_factory=list)
-    nonius_in_range_max: float = 0.0
-    nonius_in_range_min: float = 0.0
+    nonius_in_range_max: Optional[float] = None
+    nonius_in_range_min: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
