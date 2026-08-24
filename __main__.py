@@ -11,7 +11,6 @@ from ingeniamotion.enums import SensorType
 from ic_haus_magnetic_encoder_calibration.calibrator import (
     DEFAULT_CAPTURE_DURATION_S,
     DEFAULT_PDO_RATE_S,
-    NONIUS_IN_RANGE_RECOMMENDED_MAX_PERCENT,
     EncoderCalibrator,
 )
 from ic_haus_magnetic_encoder_calibration.config_loader import load_encoders_configuration_file
@@ -58,25 +57,6 @@ def _positive_float(value: str) -> float:
     number = float(value)
     if number <= 0:
         msg = f"Expected a positive float number, got {value!r}"
-        raise argparse.ArgumentTypeError(msg)
-    return number
-
-
-def _percentage(value: str) -> float:
-    """Ensure a percentage CLI argument value (0-100).
-
-    Args:
-        value: The string value to parse as a float.
-
-    Returns:
-        The parsed float percentage value (0-100).
-
-    Raises:
-        argparse.ArgumentTypeError: If the value is not a percentage between 0 and 100.
-    """
-    number = float(value)
-    if not (0 <= number <= 100):
-        msg = f"Expected a percentage between 0 and 100, got {value!r}"
         raise argparse.ArgumentTypeError(msg)
     return number
 
@@ -189,6 +169,13 @@ def parse_args() -> argparse.Namespace:
         help="Save JSON export of calibration data (default: true)",
     )
     parser.add_argument(
+        "--save-nonius-track",
+        type=_parse_bool,
+        default=False,
+        metavar="BOOL",
+        help="Save nonius track plots (default: false)",
+    )
+    parser.add_argument(
         "--drive-config",
         type=Path,
         default=None,
@@ -209,21 +196,6 @@ def parse_args() -> argparse.Namespace:
         "--verbose",
         action="store_true",
         help="Enable debug logging",
-    )
-    parser.add_argument(
-        "--force-in-range",
-        type=_percentage,
-        nargs="?",
-        const=NONIUS_IN_RANGE_RECOMMENDED_MAX_PERCENT,
-        default=None,
-        metavar="PERCENT",
-        help=(
-            "Force calibration to keep iterating if the Nonius InRange value exceeds a "
-            "threshold. If omitted, the InRange value is not enforced. If given "
-            f"without a value, defaults to {NONIUS_IN_RANGE_RECOMMENDED_MAX_PERCENT:.0f}%%. "
-            "If given with a value (e.g. --force-in-range 70), that value is used "
-            "as the threshold."
-        ),
     )
     return parser.parse_args()
 
@@ -268,7 +240,7 @@ def main() -> None:
         save_residual_bar_plots=args.save_residual_bar_plots,
         save_trend_plot=args.save_trend_plot,
         save_json=args.save_json,
-        force_in_range=args.force_in_range,
+        save_nonius_track=args.save_nonius_track,
     )
 
     # Load encoder configurations from JSON file if provided
@@ -288,11 +260,13 @@ def main() -> None:
     all_ok = True
     for enc_num, result in results.items():
         status = "SUCCESS" if result.success else "FAILED"
-        logger.info(
-            f"Encoder {enc_num}: {status} ({result.iterations} iterations) "
-            f"(InRange %: Max={result.nonius_in_range_max:.2f}%, "
-            f"Min={result.nonius_in_range_min:.2f}%)"
-        )
+        result_msg = f"Encoder {enc_num}: {status} ({result.iterations} iterations) "
+        if result.success:
+            result_msg += (
+                f"(InRange %: Max={result.nonius_in_range_max:.2f}%, "
+                f"Min={result.nonius_in_range_min:.2f}%)"
+            )
+        logger.info(result_msg)
         if not result.success:
             all_ok = False
 

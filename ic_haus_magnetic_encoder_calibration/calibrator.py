@@ -39,6 +39,7 @@ from .encoder import (
 from .motor_control import DEFAULT_GEN_CURRENT, DEFAULT_GEN_FREQ, MotorControl
 from .plotting import (
     RESIDUAL_THRESHOLD,
+    _plot_nonius_track_offset_table,
     _plot_raw_waveforms,
     _plot_residuals_bar,
     _plot_residuals_trend,
@@ -116,6 +117,7 @@ class _SingleEncoderCalibration:
         self.residual_history: list[list[float]] = []
         self.iteration_log: list[dict[str, object]] = []
         self.last_analyze_result: Optional[mu_3sl.AnalyzeResult] = None
+        self.last_raw_data: Optional[tuple[list[int], list[int]]] = None
 
     @property
     def number(self) -> int:
@@ -221,40 +223,6 @@ class _SingleEncoderCalibration:
             in_range_min=in_range_min,
         )
 
-    def is_in_range(
-        self,
-        analyze_result: mu_3sl.AnalyzeResult,
-        in_range_threshold: Optional[float],
-    ) -> bool:
-        """Check whether the Nonius In Range Max & Min values are below the threshold.
-
-        Args:
-            analyze_result: Result from ``Calibration.analyze_raw_data()``.
-            in_range_threshold: Threshold percentage (0-100) for In Range check.
-
-        Returns:
-            True if both the "max" and "min" In Range values are below the threshold,
-                False otherwise.
-        """
-        if not in_range_threshold:
-            in_range_threshold = NONIUS_IN_RANGE_RECOMMENDED_MAX_PERCENT
-        nonius_in_range_result = self.get_nonius_in_range(analyze_result)
-        in_range_max = nonius_in_range_result.in_range_max
-        if in_range_max > in_range_threshold:
-            logger.warning(
-                f"Encoder {self.number} Nonius InRange Max {in_range_max:.1f}% exceeds threshold "
-                f"{in_range_threshold:.1f}%."
-            )
-            return False
-        in_range_min = nonius_in_range_result.in_range_min
-        if in_range_min > in_range_threshold:
-            logger.warning(
-                f"Encoder {self.number} Nonius InRange Min {in_range_min:.1f}% exceeds threshold "
-                f"{in_range_threshold:.1f}%."
-            )
-            return False
-        return True
-
     def process_iteration(
         self,
         iteration: int,
@@ -265,7 +233,6 @@ class _SingleEncoderCalibration:
         save_raw_plots: bool = False,
         save_residual_bar_plots: bool = False,
         save_trend_plot: bool = True,
-        force_in_range_threshold: Optional[float] = None,
     ) -> None:
         """Run one calibration iteration: analyze, log, plot, correct.
 
@@ -280,8 +247,6 @@ class _SingleEncoderCalibration:
             save_raw_plots: If True, save raw waveform plots for this iteration.
             save_residual_bar_plots: If True, save residual bar plots for this iteration.
             save_trend_plot: If True, save residuals trend plot (one per encoder).
-            force_in_range_threshold: If not None, treat Nonius In Range > threshold as
-                a calibration failure.
 
         Raises:
             RuntimeError: If monitoring data is empty or non-positive.
@@ -296,6 +261,14 @@ class _SingleEncoderCalibration:
             )
             raise RuntimeError("No samples captured. PDO exchange may have died.")
 
+        # -- Iteration phase1: Write current analog parameters to the calibration object --
+        # Get current analog parameters from chip and set them in the calibration object
+        master_adj, nonius_adj = self.enc.read_analog_adjustments()
+        self.cal.set_current_analog_track_adjustments(master_adj, nonius_adj)
+        # Reinforce MPC hint so the library doesn't re-detect a wrong count.
+        self.cal.preconfigure_number_of_master_periods(self.n_master_periods)
+
+        # -- Iteration phase2: Analyze raw data --
         # Unpack packed register values into master / nonius tracks.
         master_raw: list[int] = []
         nonius_raw: list[int] = []
@@ -303,17 +276,11 @@ class _SingleEncoderCalibration:
             m, n = split_raw_payload(val)
             master_raw.append(m)
             nonius_raw.append(n)
-
-        # B1 fix: sync DLL with current chip state
-        master_adj, nonius_adj = self.enc.read_analog_adjustments()
-        self.cal.set_current_analog_track_adjustments(master_adj, nonius_adj)
-
-        # Reinforce MPC hint so the library doesn't re-detect a wrong count.
-        self.cal.preconfigure_number_of_master_periods(self.n_master_periods)
-
+        # Analyze raw data
         analyze_result = self.cal.analyze_raw_data(master_raw, nonius_raw)
 
-        # -- Diagnostics: logging --
+        # -- Iteration phase3: Read analog residuals --
+        # -- Diagnostics: logging analysis --
         ar = analyze_result
         logger.info(
             f"Encoder {self.number} iter {iteration} analysis: "
@@ -324,7 +291,7 @@ class _SingleEncoderCalibration:
             f"avg_samples/period={ar.average_number_of_samples_per_master_period():.1f}, "
             f"min_samples/period={ar.minimal_number_of_samples_per_master_period():.1f}",
         )
-
+        # -- Diagnostics: logging analog track adjustments/residuals --
         m_rel = analyze_result.relative_master_track_adjustments()
         n_rel = analyze_result.relative_nonius_track_adjustments()
         logger.info(
@@ -337,12 +304,9 @@ class _SingleEncoderCalibration:
 
         # -- Diagnostics: data collection --
         residuals = _extract_residuals(analyze_result)
-        in_range = self.get_nonius_in_range(analyze_result)
-        logger.info(
-            f"Encoder {self.number} iter {iteration} nonius in range: "
-            f"Max={in_range.in_range_max:.1f}%, Min={in_range.in_range_min:.1f}%",
-        )
+
         self.residual_history.append(residuals)
+
         self.iteration_log.append({
             "iteration": iteration,
             "master_raw": master_raw,
@@ -375,13 +339,6 @@ class _SingleEncoderCalibration:
                     "phase_lsb": float(n_rel.phase_lsb),
                 },
             },
-            "nonius phase margin": {
-                "InRange max %": in_range.in_range_max,
-                "InRange min %": in_range.in_range_min,
-                "phase margin max": in_range.margin_max,
-                "phase margin min": in_range.margin_min,
-                "phase range limit": in_range.range_limit,
-            },
             "converged": self.is_converged(analyze_result),
         })
 
@@ -413,17 +370,10 @@ class _SingleEncoderCalibration:
 
         # -- Convergence check / apply corrections --
         self.last_analyze_result = analyze_result
+        self.last_raw_data = (master_raw, nonius_raw)
         if self.is_converged(analyze_result):
             self.converged = True
             logger.info(f"Encoder {self.number}: converged at iteration {iteration}.")
-
-            # Check InRange
-            if (
-                not self.is_in_range(analyze_result, force_in_range_threshold)
-                and force_in_range_threshold
-            ):
-                logger.warning("Force-in-range is enabled: treating this as a calibration failure.")
-                self.converged = False
 
         else:
             self.cal.adjust_analog_by_analyze_result(analyze_result)
@@ -476,32 +426,78 @@ class _SingleEncoderCalibration:
 
     def finalize(
         self,
+        output_dir: Path,
+        save_nonius_track: bool = False,
     ) -> CalibrationResult:
         """Finalize calibration: optimize SPO, restore config, save to EEPROM.
 
+        Args:
+            output_dir: Directory to save nonius track plots if requested.
+            save_nonius_track: If True, save nonius track plots.
+
         Returns:
             CalibrationResult with success status and iteration count.
+
+        Raises:
+            RuntimeError: If no analysis result is available for finalization.
+            RuntimeError: If no raw data is available for finalization.
+
         """
         enc = self.enc
         cal = self.cal
 
         # Use the last iteration's analysis result (no re-acquisition).
-        assert self.last_analyze_result is not None
+        if not self.last_analyze_result:
+            raise RuntimeError("No analysis result available for finalization.")
         analyze_result = self.last_analyze_result
 
         # Nonius SPO optimization
         nonius_table = analyze_result.optimized_nonius_track_offset_table()
         cal.set_current_nonius_track_offset_table(nonius_table)
         table_params = mu_3sl.nonius_track_offset_table_parameters(nonius_table)
+        spo_n = [table_params.spo_n[i] for i in range(15)]
         enc.write_nonius_parameters(table_params)
 
-        # Apply the final analog adjustments to the iC-MU registers (in raw mode).
+        # Re-analyze the same raw data with the SPO table applied, so the nonius
+        # curves and the InRange % reflect the final configuration.
+        if not self.last_raw_data:
+            raise RuntimeError("No raw data available for finalization.")
+        last_master_raw, last_nonius_raw = self.last_raw_data
+        analyze_result = cal.analyze_raw_data(last_master_raw, last_nonius_raw)
+        analyze_result.optimized_nonius_track_offset_table()  # populate curve buffers
+        self.last_analyze_result = analyze_result
+        nonius_in_range = self.get_nonius_in_range(analyze_result)
+        self.iteration_log.append({
+            "nonius phase margin": {
+                "InRange max %": nonius_in_range.in_range_max,
+                "InRange min %": nonius_in_range.in_range_min,
+                "phase margin max": nonius_in_range.margin_max,
+                "phase margin min": nonius_in_range.margin_min,
+                "phase range limit": nonius_in_range.range_limit,
+            },
+        })
+        if save_nonius_track:
+            phase_error = analyze_result.nonius_phase_errors()
+            track_offset_curve = analyze_result.nonius_track_offset_curve()
+            phase_margin = analyze_result.nonius_phase_margin()
+            single_turn_position = analyze_result.nonius_position(mu_3sl.Unit.DEGREE, False)
+            continuous_single_turn_position = analyze_result.nonius_position(
+                mu_3sl.Unit.DEGREE, True
+            )
+            _plot_nonius_track_offset_table(
+                encoder=enc.number,
+                phase_error=phase_error,
+                track_offset_curve=track_offset_curve,
+                phase_margin=phase_margin,
+                single_turn_position=single_turn_position,
+                continuous_single_turn_position=continuous_single_turn_position,
+                nonius_phase_range_limit=nonius_in_range.range_limit,
+                output_dir=output_dir,
+            )
+
+        # Get final analog adjustments and InRange values for the result.
         final_master = cal.analog_master_track_adjustments()
         final_nonius = cal.analog_nonius_track_adjustments()
-        spo_n = [table_params.spo_n[i] for i in range(15)]
-
-        # Get InRange%
-        nonius_in_range = self.get_nonius_in_range(analyze_result)
 
         return CalibrationResult(
             success=True,
@@ -535,9 +531,9 @@ class EncoderCalibrator:
         save_raw_plots: If True, save raw waveform plots for each iteration.
         save_residual_bar_plots: If True, save residual bar plots for each iteration.
         save_trend_plot: If True, save residuals trend plot (one per encoder).
+        save_nonius_track: If True, save nonius track plots.
         save_json: If True, save iteration logs as JSON files.
-        force_in_range: If not None, treat Nonius In Range > force_in_range(%)
-            as a calibration failure.
+
     """
 
     def __init__(
@@ -556,7 +552,7 @@ class EncoderCalibrator:
         save_residual_bar_plots: bool = False,
         save_trend_plot: bool = True,
         save_json: bool = True,
-        force_in_range: Optional[float] = None,
+        save_nonius_track: bool = False,
     ) -> None:
         self._mc = mc
         self._axis = axis
@@ -573,14 +569,13 @@ class EncoderCalibrator:
         self._save_residual_bar_plots = save_residual_bar_plots
         self._save_trend_plot = save_trend_plot
         self._save_json = save_json
+        self._save_nonius_track = save_nonius_track
         # PDO state
         self._tpdo_map: Optional[TPDOMap] = None
         self._padding_rpdo: Optional[RPDOMap] = None
         self._pdo_buffer: deque[list[int]] = deque()
         self._pdo_lock = threading.Lock()
         self._pdo_collecting = False
-        # InRange
-        self._force_in_range = force_in_range
 
     # -- Encoder management --
     def add_encoder(self, sensor_type: SensorType, sensor_config: EncoderRegisterConfig) -> Encoder:
@@ -811,8 +806,11 @@ class EncoderCalibrator:
 
                         logger.info(f"--- Iteration {iteration} ---")
 
+                        # -- Acquire raw data from all encoders (blocking) --
                         raw_data = self._acquire_raw_data()
 
+                        # -- Process each encoder's raw data --
+                        # -- Perform analysis, logging, plotting, and analog correction --
                         for enc in pending:
                             enc.process_iteration(
                                 iteration,
@@ -822,7 +820,6 @@ class EncoderCalibrator:
                                 save_raw_plots=self._save_raw_plots,
                                 save_residual_bar_plots=self._save_residual_bar_plots,
                                 save_trend_plot=self._save_trend_plot,
-                                force_in_range_threshold=self._force_in_range,
                             )
 
                     # -- Finalize converged encoders --
@@ -830,7 +827,9 @@ class EncoderCalibrator:
                     for enc in encoders:
                         if enc.converged:
                             # Then in the loop:
-                            results[enc.number] = enc.finalize()
+                            results[enc.number] = enc.finalize(
+                                self._output_dir, save_nonius_track=self._save_nonius_track
+                            )
 
                         else:
                             logger.warning(
@@ -838,18 +837,9 @@ class EncoderCalibrator:
                                 f" {self._max_iterations} iterations."
                                 f" Skipping EEPROM save.",
                             )
-                            last_analyze_result = enc.last_analyze_result
-                            if last_analyze_result is None:
-                                in_range_max = in_range_min = 0.0
-                            else:
-                                in_range = enc.get_nonius_in_range(enc.last_analyze_result)
-                                in_range_max = in_range.in_range_max
-                                in_range_min = in_range.in_range_min
                             results[enc.number] = CalibrationResult(
                                 success=False,
                                 iterations=enc.iteration_count,
-                                nonius_in_range_max=in_range_max,
-                                nonius_in_range_min=in_range_min,
                             )
 
                 return results
