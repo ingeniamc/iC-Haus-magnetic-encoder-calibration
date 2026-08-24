@@ -9,9 +9,7 @@ This guide briefly explains:
 This document complements [architecture.md](architecture.md), which
 describes the module and class structure.
 
----
-
-## 1. Procedure overview
+## 1. Procedure overview - Analog + Nonius calibration
 
 The procedure for each encoder is:
 
@@ -20,12 +18,12 @@ The procedure for each encoder is:
 2. **Motor spin** — The motor is driven by the drive's internal saw-tooth current generator
    (`--gen-current`, `--gen-frequency`).
 3. **Iterative analog calibration** — For each iteration:
-   - Capture raw data samples for `--capture-duration` seconds
+    - Capture raw data samples for `--capture-duration` seconds
      via EtherCAT TPDOs at `--pdo-rate-ms`.
-  - Analyze the data to calculate eight analog residuals (cosine gain,
+    - Analyze the data to calculate eight analog residuals (cosine gain,
     sine offset, cosine offset, and phase for both the master and Nonius
     tracks), in LSB.
-  - If **all eight residuals are ≤ 1.0 LSB**, the iteration converges.
+    - If **all eight residuals are ≤ 1.0 LSB**, the iteration converges.
     Otherwise, the analog parameters are corrected and the next iteration
     runs, until convergence or `--max-iterations` is reached.
 4. **Nonius calibration** — The Nonius offset table is adjusted using the
@@ -33,8 +31,6 @@ The procedure for each encoder is:
 5. **Finalization** — The original configuration is restored, and the
   result is saved to EEPROM.
 
-Each iteration needs good-quality raw data; this is the dominant factor in
-calibration speed and success.
 
 ```mermaid
 flowchart
@@ -47,6 +43,7 @@ flowchart
     E{"All <= 1.0 LSB?"}
     G["Adjust Nonius table"]
     H["Re-analyze data<br/>Calculate InRange%"]
+    I["Finalization"]
 
     A --> B
     B --> C
@@ -56,10 +53,14 @@ flowchart
     F --> C
     E -- "Yes" --> G
     G --> H
+    H --> I
 
 ```
 
 ## 2. Raw data requirements
+
+**Each calibration iteration needs good-quality raw data; this is the dominant factor in
+calibration speed and success.**
 
 Raw data must meet the following requirements for calibration to converge
 quickly and successfully:
@@ -71,7 +72,6 @@ For each magnetic (master) period (360° electrical = one pole pair):
 - **Continuous, non-stopping motion**
 
 
----
 
 ## 3. Parameters to work with
 
@@ -83,19 +83,19 @@ For each magnetic (master) period (360° electrical = one pole pair):
 | `--capture-duration` | Sets the acquisition time per iteration. | Higher ⇒ capture more samples and revolutions | Decrease to reduce iteration time once data quality is sufficient. Too short a window may not provide 2–3 complete revolutions. |
 
 
----
+
 
 ## 4. Ideal tuning procedure
 
 1. Tune the parameters to obtain good-quality data.
-  - Run with the default parameters and `--max-iterations 1`.
-  - Check the logs and tune `--gen-frequency`, `--pdo-rate-ms`, and
-    `--capture-duration` until `min_samples/period ≥ 128` and `revolutions ≥ 2–3`.
+    - Run with the default parameters and `--max-iterations 1`.
+    - Check the logs and tune `--gen-frequency`, `--pdo-rate-ms`, and
+    `--capture-duration` until `avg_samples/period ≥ 128`, `min_samples/period ≥ 128` and `revolutions ≥ 2–3`.
 
-        Example log output for suitable data parameters:
-        ```bash
-        2026-08-21 12:50:37,335 INFO ic_haus_magnetic_encoder_calibration.calibrator: Encoder 1 iter 1 analysis: valid=True, calc_periods=32, revolutions=2.02, acquired_periods=64.7, avg_samples/period=155.6, min_samples/period=146.8
-        ```
+      Example log output for suitable data parameters:
+      ```bash
+      2026-08-21 12:50:37,335 INFO ic_haus_magnetic_encoder_calibration.calibrator: Encoder 1 iter 1 analysis: valid=True, calc_periods=32, revolutions=2.02, acquired_periods=64.7, avg_samples/period=155.6, min_samples/period=146.8
+      ```
 
 
 2. Once the acquired data meets these requirements, increase
@@ -104,10 +104,8 @@ For each magnetic (master) period (360° electrical = one pole pair):
    - Keep `--max-iterations` at its default value or use a lower limit,
     such as `--max-iterations 5`.
 
-3. To reduce execution time, disable diagnostic output by setting these
-  flags to `False`: `--save-raw-plots`, `--save-residual-bar-plots`,
-  `--save-trend-plot`, `--save-json`, and `--save-nonius-track`.
- 
+3. To reduce execution time, check "Calibration converges in 3–4 iterations but the process is too slow" section.
+
 
 ## 5. Tuning troubleshooting
 
@@ -115,19 +113,22 @@ For each magnetic (master) period (360° electrical = one pole pair):
 - Increase samples per period: lower `--pdo-rate-ms` and/or lower
   `--gen-frequency`.
 - Increase the number of revolutions: increase `--capture-duration` and/or
-  lower `--gen-frequency`.
+  increase `--gen-frequency`.
 - Rule out mechanical issues (play, pole-wheel quality, and cogging torque) if
   increasing samples/revolutions doesn't help.
 - Rule out drive-to-encoder communication issues by checking the BiSS-C
   parameters.
-- Only raise `--max-iterations` once per-iteration data already meets
-  the targets above.
+- Only raise `--max-iterations` once raw data already meets the requirements.
 
 ### Calibration converges in 3–4 iterations but the process is too slow
 - Reduce acquisition time while maintaining data quality
-  (`min_samples/period ≥ 128` and `revolutions ≥ 2–3`):
+  (`avg_samples/period ≥ 128`, `min_samples/period ≥ 128` and `revolutions ≥ 2–3`):
   - lower `--pdo-rate-ms` and `--capture-duration`
   - raise `--gen-frequency` (careful with `samples/period`)
+
+- Disable diagnostic output by setting these
+  flags to `False`: `--save-raw-plots`, `--save-residual-bar-plots`,
+  `--save-trend-plot`, `--save-json`, and `--save-nonius-track`.
    
 ### Calibration requires more than four iterations
 - Check `avg_samples/period` and `min_samples/period`; both should be
@@ -148,7 +149,7 @@ issue, not a data-acquisition issue.
 ## 6. Optimal calibration checklist
 
 - [ ] Motor at steady speed for the whole data capture duration.
-- [ ] `min_samples/period` ≥ 128.
+- [ ] `avg_samples/period` & `min_samples/period` ≥ 128.
 - [ ] `revolutions` ≥ 2–3.
 - [ ] Residuals ≤1.0 LSB.
 - [ ] Nonius minimum and maximum InRange% values ≤60%.
