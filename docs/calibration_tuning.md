@@ -6,7 +6,7 @@ This guide briefly explains:
 - Which parameters affect it
 - How to tune them for a calibration that **converges reliably and quickly**.
 
-This document complements [architecture.md](architecture.md), which
+This document complements [architecture.md](docs/architecture.md), which
 describes the module and class structure.
 
 ## 1. Procedure overview - Analog + Nonius calibration
@@ -157,7 +157,7 @@ issue, not a data-acquisition issue.
 
 ## 7. Further reading
 
-- **[architecture.md](architecture.md)** — Module structure, class
+- **[architecture.md](docs/architecture.md)** — Module structure, class
   responsibilities, calibration flow implemented here.
 - **[Manuals and datasheets available on the ic-haus website](https://www.ichaus.de/download-center/)**
   — Manuals and datasheets referring to the `mu_3sl` library require a
