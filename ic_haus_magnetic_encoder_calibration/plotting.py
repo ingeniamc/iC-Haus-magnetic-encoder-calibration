@@ -8,7 +8,7 @@ Generates three types of figures:
 3. **Residuals trend** - line chart showing how each residual evolves
    across iterations (updated cumulatively).
 
-Each figure is saved as a PNG and, optionally, shown interactively.
+Each figure is saved as a PNG.
 """
 
 import logging
@@ -39,26 +39,20 @@ _RESIDUAL_LABELS = [
 ]
 
 
-def _save_and_show(fig: Figure, path: Path, *, interactive: bool) -> None:
+def _save_and_show(fig: Figure, path: Path) -> None:
     fig.savefig(path, dpi=150, bbox_inches="tight")
     logger.info(f"Saved plot: {path}")
-    if interactive:
-        fig.show()
-        plt.pause(0.1)
-    else:
-        plt.close(fig)
+    plt.close(fig)
 
 
-def _ensure_backend(*, interactive: bool) -> None:
+def _ensure_backend() -> None:
     """Set the matplotlib backend once, before creating any figures."""
     current = plt.get_backend().lower()
-    if interactive and current == "agg":
-        matplotlib.use("TkAgg", force=True)
-    elif not interactive and current != "agg":
+    if current != "agg":
         matplotlib.use("Agg", force=True)
 
 
-def warm_matplotlib_cache(*, interactive: bool = False) -> None:
+def warm_matplotlib_cache() -> None:
     """Force matplotlib to build its font cache before time-critical work.
 
     The first call to ``savefig()`` triggers a full font enumeration that
@@ -66,7 +60,7 @@ def warm_matplotlib_cache(*, interactive: bool = False) -> None:
     active, this stall is long enough to trip the EtherCAT watchdog.
     Calling this function **before** PDO activation eliminates that risk.
     """
-    _ensure_backend(interactive=interactive)
+    _ensure_backend()
     fig, ax = plt.subplots()
     ax.set_title("warm-up")
     warmup_path = Path(tempfile.gettempdir()) / ".mpl_warmup.png"
@@ -83,7 +77,6 @@ def _plot_raw_waveforms(
     encoder: int,
     iteration: int,
     output_dir: Path,
-    interactive: bool = False,
 ) -> Path:
     """Plot raw master and nonius ADC waveforms.
 
@@ -93,12 +86,11 @@ def _plot_raw_waveforms(
         encoder: Encoder channel number.
         iteration: Current calibration iteration.
         output_dir: Directory for PNG output.
-        interactive: Whether to also display the plot window.
 
     Returns:
         Path to the saved PNG file.
     """
-    _ensure_backend(interactive=interactive)
+    _ensure_backend()
     fig, (ax_m, ax_n) = plt.subplots(2, 1, sharex=True, figsize=(12, 6))
     fig.suptitle(f"Encoder {encoder} - Iteration {iteration}: Raw Waveforms")
 
@@ -112,7 +104,7 @@ def _plot_raw_waveforms(
     ax_n.set_title(f"Nonius track ({len(nonius_raw)} samples)")
 
     path = output_dir / f"enc{encoder}_iter{iteration}_raw.png"
-    _save_and_show(fig, path, interactive=interactive)
+    _save_and_show(fig, path)
     return path
 
 
@@ -122,7 +114,6 @@ def _plot_residuals_bar(
     encoder: int,
     iteration: int,
     output_dir: Path,
-    interactive: bool = False,
 ) -> Path:
     """Plot a bar chart of the 8 analog residuals vs the convergence threshold.
 
@@ -131,12 +122,11 @@ def _plot_residuals_bar(
         encoder: Encoder channel number.
         iteration: Current calibration iteration.
         output_dir: Directory for PNG output.
-        interactive: Whether to also display the plot window.
 
     Returns:
         Path to the saved PNG file.
     """
-    _ensure_backend(interactive=interactive)
+    _ensure_backend()
     abs_residuals = [abs(r) for r in residuals]
 
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -154,7 +144,7 @@ def _plot_residuals_bar(
         ax.text(i, v + 0.05, f"{v:.2f}", ha="center", va="bottom", fontsize=8)
 
     path = output_dir / f"enc{encoder}_iter{iteration}_residuals.png"
-    _save_and_show(fig, path, interactive=interactive)
+    _save_and_show(fig, path)
     return path
 
 
@@ -163,7 +153,6 @@ def _plot_residuals_trend(
     *,
     encoder: int,
     output_dir: Path,
-    interactive: bool = False,
 ) -> Path:
     """Plot the evolution of each residual across iterations.
 
@@ -171,12 +160,11 @@ def _plot_residuals_trend(
         history: ``{encoder_number: [[8 residuals iter1], [8 residuals iter2], ...]}``.
         encoder: Encoder channel number.
         output_dir: Directory for PNG output.
-        interactive: Whether to also display the plot window.
 
     Returns:
         Path to the saved PNG file.
     """
-    _ensure_backend(interactive=interactive)
+    _ensure_backend()
     data = history[encoder]
     iterations = list(range(1, len(data) + 1))
 
@@ -193,7 +181,7 @@ def _plot_residuals_trend(
     ax.legend(fontsize=8, ncol=2)
 
     path = output_dir / f"enc{encoder}_residuals_trend.png"
-    _save_and_show(fig, path, interactive=interactive)
+    _save_and_show(fig, path)
     return path
 
 
@@ -222,7 +210,7 @@ def _plot_nonius_track_offset_table(
         )
         return
 
-    _ensure_backend(interactive=False)
+    _ensure_backend()
 
     single_turns_start_index = []
     single_turns_start_index.append(0)
@@ -330,4 +318,4 @@ def _plot_nonius_track_offset_table(
     )
 
     path = output_dir / f"enc{encoder}_nonius_curve.png"
-    _save_and_show(nonius_curve_fig, path, interactive=False)
+    _save_and_show(nonius_curve_fig, path)
