@@ -239,7 +239,7 @@ flowchart TD
     LOOP -- No --> FAIL["Non-converged encoders:<br/>CalibrationResult(success=False)"]
     FAIL --> MOTOR_STOP
 
-    FINALIZE["**For each converged Encoder:**<br/>finalize():<br/>Optimize nonius SPO table using stored last_analyze_result<br/>Write SPO params to chip<br/>Return CalibrationResult"]
+    FINALIZE["**For each converged Encoder:**<br/>finalize():<br/>Optimize nonius SPO table using stored last_analyze_result<br/>Write SPO params to chip<br/>Re-analyze stored raw data with SPO applied<br/>Compute Nonius InRange %<br/>Return CalibrationResult"]
     FINALIZE --> MOTOR_STOP
 
     MOTOR_STOP["**Stop motor**<br/>(motor_spinning context exits)"]
@@ -314,6 +314,17 @@ classDiagram
         +nonius_adjustments: AnalogTrackAdjustments?
         +spo_base: int
         +spo_n: list~int~
+        +nonius_in_range_max: float?
+        +nonius_in_range_min: float?
+    }
+
+    class NoniusInRangeResult {
+        <<dataclass>>
+        +range_limit: int
+        +margin_max: int
+        +margin_min: int
+        +in_range_max: float
+        +in_range_min: float
     }
 
     class Encoder {
@@ -384,6 +395,7 @@ classDiagram
         +reset_analog()
         +is_converged(analyze_result) bool$
         +process_iteration(iteration, raw_data, ...)
+        +get_nonius_in_range(analyze_result) NoniusInRangeResult
         +restore_state()
         +export_data(output_dir)
         +finalize() CalibrationResult
@@ -438,13 +450,15 @@ classDiagram
     Encoder ..> DriveFrameConfig : get/set
     Encoder ..> ICMURegisterState : get/set
     _SingleEncoderCalibration ..> CalibrationResult : produces
+    _SingleEncoderCalibration ..> NoniusInRangeResult : produces
+    CalibrationResult ..> NoniusInRangeResult : uses values from
 ```
 
 > **Encoder**: Wraps a single iC-MU encoder — BiSS read/write, register save/restore via get/set pattern, analog parameter management, nonius SPO writes, factory default reset, EEPROM save. The constructor requires an `EncoderRegisterConfig` (from JSON or custom). `apply_config()` writes the register values from this config to the chip at the start of each run. State is not stored internally; the caller (`_SingleEncoderCalibration`) manages saved configs.
 >
 > **MotorControl**: Wraps motor operations with transparent FSoE support. Auto-detects drive safety capability, manages the full FSoE lifecycle (prepare/activate/stop), and handles internal generator configuration with current ramp-up to avoid FSoE PDO starvation. The `motor_spinning()` context manager starts and stops the motor; the motor runs continuously for the entire calibration session.
 >
-> **_SingleEncoderCalibration**: Per-encoder calibration state and iteration logic. Tracks calibration progress through setup (save state, enter calibration mode, reset analog), iterative analysis (`process_iteration()`), and cleanup (`restore_state()`, `finalize()`). Owns the mu_3sl `Calibration` object and stores residual history, iteration log, and the last analysis result.
+> **_SingleEncoderCalibration**: Per-encoder calibration state and iteration logic. Tracks calibration progress through setup (save state, enter calibration mode, reset analog), iterative analysis (`process_iteration()`), and cleanup (`restore_state()`, `finalize()`). Owns the mu_3sl `Calibration` object and stores residual history, iteration log, and the last analysis result. `get_nonius_in_range()` computes the Nonius "In Range" margin percentages (`NoniusInRangeResult`), matching the iC-Haus GUI calculation.
 >
 > **EncoderCalibrator**: Orchestrates calibration across N encoders. The caller must: (1) obtain encoder configs (via `load_encoders_configuration_file()` from JSON or by creating `EncoderRegisterConfig` objects directly), (2) create the calibrator, (3) call `add_encoder(sensor_type, config)` for each sensor to enroll (configs are **required**), (4) call `configure_drive_encoders()` to set up the drive, and (5) call `calibrate()` to run the loop. The `calibrate()` method delegates all motor and FSoE operations to an internal `MotorControl` instance, manages TPDO data acquisition, and coordinates the calibration loop. Motor runs continuously for the entire session via `motor_spinning()`; data is captured from all encoders simultaneously via EtherCAT TPDOs.
 >
@@ -461,7 +475,7 @@ classDiagram
 - **TPDO data acquisition**: Raw encoder data is captured via EtherCAT TPDOs (TPDO map on the encoder `pos_value` registers), not BiSS SDO reads. Sampling runs in the same PDO exchange thread as the FSoE safety protocol, giving deterministic capture at the PDO cycle rate.
 - **Two-phase FSoE lifecycle**: The data TPDO is registered on the servo first (via `_setup_data_tpdo()`), then `prepare_fsoe()` registers the safety PDO maps, then `activate_pdos()` starts the PDO thread. This ordering is critical because the TPDO dictionary insertion order must match the sorted index order expected by the process data parser. Uses STO bypass mode with `use_sra=True`. PDO watchdog set to 6.0s. Current ramped in discrete steps with sleeps to avoid PDO starvation.
 - **Factory-default analog reset**: `reset_analog_to_factory_defaults()` is called during setup (phase 3) to provide a sensible starting point when the current chip state is unknown or corrupted.
-- **Nonius SPO finalization**: `finalize()` uses the stored `last_analyze_result` from the converging iteration to compute the optimized nonius offset table. No extra motor spin or data capture is needed.
+- **Nonius SPO finalization**: `finalize()` uses the stored `last_analyze_result` from the converging iteration to compute the optimized nonius offset table and writes it to the chip. It then re-analyzes the same stored raw samples (`last_raw_data`) with the new offset table applied, so the InRange % and nonius curves reflect the final, as-written configuration. No extra motor spin or data capture is needed. `get_nonius_in_range()` computes `NoniusInRangeResult` (margins as a percentage of the phase range limit, recommended ≤60%, see [calibration_tuning.md](calibration_tuning.md)), and the final `in_range_max`/`in_range_min` are stored on `CalibrationResult`.
 - **EEPROM save sequence**: `restore_state()` restores the saved iC-MU config (`set_ic_config()`) → saves to EEPROM (`WRITE_ALL` command) → issues `ABS_RESET` to clear the startup NON_CTR error → restores the drive frame config. `finalize()` only optimizes and writes the nonius SPO table and returns the `CalibrationResult`; it does not touch EEPROM.
 - **Guaranteed restore**: `restore_state()` runs in the outer `finally` block for all encoders. Each encoder restores its iC-MU config (`set_ic_config()`), saves to EEPROM, issues `ABS_RESET`, and restores its drive config. Each restore is individually wrapped so one encoder's failure doesn't block another.
 - **Multi-encoder**: `DriveEncoderRegisters` maps both encoder 1 and 2 register names. Data is captured simultaneously from all encoders via the shared TPDO map.
