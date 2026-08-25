@@ -169,7 +169,7 @@ pytest tests/ -m hardware --setup=tests.setups.tests_setup.MY_SETUP
 
 ## Further reading
 
-On the `docs` folder:
+In the `docs` folder:
 
 - See [architecture.md](docs/architecture.md) for a detailed explanation of the iC-MU
 encoder, the calibration algorithm, register layout, and design decisions.
