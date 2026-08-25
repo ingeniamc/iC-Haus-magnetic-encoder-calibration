@@ -173,4 +173,4 @@ On the `docs` folder:
 
 - See [architecture.md](docs/architecture.md) for a detailed explanation of the iC-MU
 encoder, the calibration algorithm, register layout, and design decisions.
-- See [calibration_tuning.md](docs/calibration_tuning.md) for more information on how to tune the calibrator.
+- See [calibration_tuning.md](docs/calibration_tuning.md) for more information on how to tune the calibrator and calibration troubleshooting guidelines.

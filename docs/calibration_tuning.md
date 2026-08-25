@@ -109,6 +109,15 @@ For each magnetic (master) period (360° electrical = one pole pair):
 
 ## 5. Tuning troubleshooting
 
+### Calibration fails due to `PDO exchange error`
+- Communication load is too high: increase `--pdo-rate-ms` (careful with `samples/period`).
+
+  Example log output of a PDO exchange error:
+  ```bash
+  2026-08-25 15:20:01,804 ERROR    ingenialink.pdo_network_manager: Stopping the PDO thread due to the following exception: Processdata working count is wrong, expected: 3, real: -1. Slave 1: state OP_STATE.
+  2026-08-25 15:20:01,804 ERROR    ingenialink.ethercat.network: An exception occurred during the PDO exchange: Stopping the PDO thread due to the following exception: Processdata working count is wrong, expected: 3, real: -1. Slave 1: state OP_STATE.
+  ```
+
 ### Calibration does not converge
 - Increase samples per period: lower `--pdo-rate-ms` and/or lower
   `--gen-frequency`.
