@@ -32,8 +32,8 @@ with two sensing tracks of different pole-pair counts:
 
 | Track | Pole pairs | Role |
 |-------|-----------|------|
-| **Master** | Higher (e.g. 11) | High resolution *within* one pole-pair period |
-| **Nonius** | Lower (e.g. 8) | Determines *which* period → absolute position |
+| **Master** | Higher (e.g. 16) | High resolution *within* one pole-pair period |
+| **Nonius** | Lower (e.g. 15) | Determines *which* period → absolute position |
 
 By combining both tracks the encoder resolves a unique absolute position across
 one full mechanical revolution.
