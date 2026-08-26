@@ -228,7 +228,6 @@ class _SingleEncoderCalibration:
         iteration: int,
         raw_data: list[int],
         output_dir: Path,
-        interactive: bool,
         *,
         save_raw_plots: bool = False,
         save_residual_bar_plots: bool = False,
@@ -243,7 +242,6 @@ class _SingleEncoderCalibration:
             iteration: Current iteration number (1-based).
             raw_data: List of packed 32-bit register values from the drive.
             output_dir: Directory for diagnostic plot PNGs.
-            interactive: If True, show plots interactively instead of saving.
             save_raw_plots: If True, save raw waveform plots for this iteration.
             save_residual_bar_plots: If True, save residual bar plots for this iteration.
             save_trend_plot: If True, save residuals trend plot (one per encoder).
@@ -350,7 +348,6 @@ class _SingleEncoderCalibration:
                 encoder=self.number,
                 iteration=iteration,
                 output_dir=output_dir,
-                interactive=interactive,
             )
         if save_residual_bar_plots:
             _plot_residuals_bar(
@@ -358,14 +355,12 @@ class _SingleEncoderCalibration:
                 encoder=self.number,
                 iteration=iteration,
                 output_dir=output_dir,
-                interactive=interactive,
             )
         if save_trend_plot:
             _plot_residuals_trend(
                 {self.number: self.residual_history},
                 encoder=self.number,
                 output_dir=output_dir,
-                interactive=interactive,
             )
 
         # -- Convergence check / apply corrections --
@@ -527,7 +522,6 @@ class EncoderCalibrator:
         pdo_rate: PDO cycle time in seconds.
         capture_duration: Data capture duration per iteration in seconds.
         output_dir: Directory for diagnostic plot PNGs.
-        interactive_plots: If True, show plots interactively instead of saving.
         save_raw_plots: If True, save raw waveform plots for each iteration.
         save_residual_bar_plots: If True, save residual bar plots for each iteration.
         save_trend_plot: If True, save residuals trend plot (one per encoder).
@@ -547,7 +541,6 @@ class EncoderCalibrator:
         pdo_rate: float = DEFAULT_PDO_RATE_S,
         capture_duration: float = DEFAULT_CAPTURE_DURATION_S,
         output_dir: Optional[Path] = None,
-        interactive_plots: bool = False,
         save_raw_plots: bool = False,
         save_residual_bar_plots: bool = False,
         save_trend_plot: bool = True,
@@ -564,7 +557,6 @@ class EncoderCalibrator:
         )
         self._encoders: list[Encoder] = []
         self._output_dir = output_dir or Path("calibration_output")
-        self._interactive_plots = interactive_plots
         self._save_raw_plots = save_raw_plots
         self._save_residual_bar_plots = save_residual_bar_plots
         self._save_trend_plot = save_trend_plot
@@ -780,12 +772,7 @@ class EncoderCalibrator:
             self._output_dir.mkdir(parents=True, exist_ok=True)
 
             # -- Setup phase 4: data TPDO (register on servo) --
-            # Must be registered BEFORE FSoE maps so that the TPDO dict
-            # insertion order (0x1A00, then 0x1B00) matches the sorted
-            # index order used by _process_tpdo() when parsing the
-            # process data buffer.
-            # https://novantamotion.atlassian.net/browse/INGK-1257
-            warm_matplotlib_cache(interactive=self._interactive_plots)
+            warm_matplotlib_cache()
             self._setup_data_tpdo()
 
             # -- Setup phase 5: FSoE (maps only, no PDO start) --
@@ -816,7 +803,6 @@ class EncoderCalibrator:
                                 iteration,
                                 raw_data[enc.number],
                                 self._output_dir,
-                                self._interactive_plots,
                                 save_raw_plots=self._save_raw_plots,
                                 save_residual_bar_plots=self._save_residual_bar_plots,
                                 save_trend_plot=self._save_trend_plot,

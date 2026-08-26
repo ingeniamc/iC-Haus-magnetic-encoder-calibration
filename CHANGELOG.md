@@ -5,6 +5,9 @@
 - `--save-nonius-track` flag for Nonius track plot generation.
 - InRange values to calibration output. 
 
+### Removed
+- `interactive plots` feature
+
 
 ## [0.1.3] - 2026-07-29
 ### Added
