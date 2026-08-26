@@ -39,10 +39,16 @@ _RESIDUAL_LABELS = [
 ]
 
 
-def _save_and_show(fig: Figure, path: Path) -> None:
+def _save_figure(fig: Figure, path: Path) -> None:
+    """Save a matplotlib figure.
+
+    Args:
+        fig: Matplotlib figure to save.
+        path: Path to save the figure to.
+
+    """
     fig.savefig(path, dpi=150, bbox_inches="tight")
     logger.info(f"Saved plot: {path}")
-    plt.close(fig)
 
 
 def _ensure_backend() -> None:
@@ -104,7 +110,7 @@ def _plot_raw_waveforms(
     ax_n.set_title(f"Nonius track ({len(nonius_raw)} samples)")
 
     path = output_dir / f"enc{encoder}_iter{iteration}_raw.png"
-    _save_and_show(fig, path)
+    _save_figure(fig, path)
     return path
 
 
@@ -144,7 +150,7 @@ def _plot_residuals_bar(
         ax.text(i, v + 0.05, f"{v:.2f}", ha="center", va="bottom", fontsize=8)
 
     path = output_dir / f"enc{encoder}_iter{iteration}_residuals.png"
-    _save_and_show(fig, path)
+    _save_figure(fig, path)
     return path
 
 
@@ -181,7 +187,7 @@ def _plot_residuals_trend(
     ax.legend(fontsize=8, ncol=2)
 
     path = output_dir / f"enc{encoder}_residuals_trend.png"
-    _save_and_show(fig, path)
+    _save_figure(fig, path)
     return path
 
 
@@ -318,4 +324,4 @@ def _plot_nonius_track_offset_table(
     )
 
     path = output_dir / f"enc{encoder}_nonius_curve.png"
-    _save_and_show(nonius_curve_fig, path)
+    _save_figure(nonius_curve_fig, path)

@@ -6,7 +6,7 @@
 - InRange values to calibration output. 
 
 ### Removed
-- `interactive` feature
+- `interactive plots` feature
 
 
 ## [0.1.3] - 2026-07-29

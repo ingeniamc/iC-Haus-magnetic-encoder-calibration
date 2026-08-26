@@ -772,11 +772,6 @@ class EncoderCalibrator:
             self._output_dir.mkdir(parents=True, exist_ok=True)
 
             # -- Setup phase 4: data TPDO (register on servo) --
-            # Must be registered BEFORE FSoE maps so that the TPDO dict
-            # insertion order (0x1A00, then 0x1B00) matches the sorted
-            # index order used by _process_tpdo() when parsing the
-            # process data buffer.
-            # https://novantamotion.atlassian.net/browse/INGK-1257
             warm_matplotlib_cache()
             self._setup_data_tpdo()
 
