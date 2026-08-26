@@ -22,6 +22,17 @@ encoder's EEPROM.
   encoder (see [config/README.md](config/README.md)). Calibration fails if it
   is missing or incomplete.
 
+## The `mu-3sl` library
+
+`mu-3sl` is iC-Haus' shared library for the iC-MU encoder series. It sits
+between applications and the chip hardware. This repository requires the Python wrapper of the
+library (distributed as a `.whl` file).
+
+The library is not publicly downloadable and must be requested from iC-Haus:
+1. Create an account on the [iC-Haus download center](https://www.ichaus.de/download-center/).
+2. Submit a request for access to the `mu-3sl` library.
+3. Make sure the downloaded `mu-3sl` version supports your application's encoder type.
+
 ## Installation
 
 1. Place the `mu-3sl` library file `.whl` inside the `/libs` folder. 
@@ -152,9 +163,14 @@ pytest tests/ -m hardware --setup=tests.setups.tests_setup.MY_SETUP
 | `ic_haus_magnetic_encoder_calibration/config_loader.py` | Loads encoder register config from `config/encoders.json` |
 | `ic_haus_magnetic_encoder_calibration/plotting.py` | Diagnostic plots |
 | `config/encoders.json` | Per-encoder register configuration (required) |
-| `architecture.md` | Detailed architecture documentation |
+| `docs/architecture.md` | Detailed architecture documentation |
+| `docs/calibration_tuning.md` | Detailed 'How to tune the calibrator' documentation |
+| `libs/*` |  Folder containing the local `mu-3sl` wheel.  |
 
 ## Further reading
 
-See [architecture.md](architecture.md) for a detailed explanation of the iC-MU
+In the `docs` folder:
+
+- See [architecture.md](docs/architecture.md) for a detailed explanation of the iC-MU
 encoder, the calibration algorithm, register layout, and design decisions.
+- See [calibration_tuning.md](docs/calibration_tuning.md) for more information on how to tune the calibrator and calibration troubleshooting guidelines.
