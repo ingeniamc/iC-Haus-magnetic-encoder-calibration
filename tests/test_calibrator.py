@@ -1,3 +1,5 @@
+from collections import deque
+
 import mu_3sl_interface as mu_3sl
 import pytest
 from ingeniamotion.enums import SensorType
@@ -7,7 +9,7 @@ from ic_haus_magnetic_encoder_calibration.calibrator import (
     _SingleEncoderCalibration,
 )
 from ic_haus_magnetic_encoder_calibration.config_loader import EncoderRegisterConfig
-from ic_haus_magnetic_encoder_calibration.encoder import split_raw_payload
+from ic_haus_magnetic_encoder_calibration.encoder import Encoder, split_raw_payload
 
 
 class TestSplitRawPayload:
@@ -110,6 +112,9 @@ def _make_converged_analyze_result(mocker):
     result.number_of_revolutions.return_value = 1.0
     result.number_of_acquired_master_periods.return_value = 32.0
     result.average_number_of_samples_per_master_period.return_value = 237.5
+    result.nonius_phase_range_limit.return_value = 1000
+    result.nonius_phase_margin_max.return_value = 400  # -> 40% (within 60% default)
+    result.nonius_phase_margin_min.return_value = -400  # -> 40%
     return result
 
 
@@ -140,11 +145,15 @@ def _make_not_converged_analyze_result(mocker):
     result.number_of_revolutions.return_value = 0.8
     result.number_of_acquired_master_periods.return_value = 28.0
     result.average_number_of_samples_per_master_period.return_value = 200.0
+    result.nonius_phase_range_limit.return_value = 1000
+    result.nonius_phase_margin_max.return_value = 400  # -> 40% (within 60% default)
+    result.nonius_phase_margin_min.return_value = -400  # -> 40%
     return result
 
 
 def _patch_encoder(enc, mocker):
     """Mock all Encoder methods used by calibrate() to avoid real BiSS calls."""
+    mocker.patch.object(type(enc), "is_bissc", new_callable=mocker.PropertyMock, return_value=True)
     mocker.patch.object(enc, "read_revision", return_value=mocker.MagicMock(name="REV"))
     mocker.patch.object(enc, "get_drive_config", return_value=mocker.MagicMock(name="DriveConfig"))
     mocker.patch.object(enc, "get_ic_config", return_value=mocker.MagicMock(name="ICConfig"))
@@ -572,3 +581,216 @@ class TestCalibrationHardware:
         assert results[1].iterations >= 1
         assert results[2].success is True
         assert results[2].iterations >= 1
+
+
+class TestGetNoniusInRange:
+    def test_computes_percentages(self, mocker) -> None:
+        """Verify that get_nonius_in_range() computes the correct percentages."""
+        # Mock an encoder and an AnalyzeResult with known nonius phase margins and range limit.
+        enc = mocker.MagicMock(number=1)
+        sec = _SingleEncoderCalibration(enc)
+        result = mocker.MagicMock()
+        result.nonius_phase_range_limit.return_value = 1000
+        result.nonius_phase_margin_max.return_value = 400
+        result.nonius_phase_margin_min.return_value = -300
+
+        # Call the method under test
+        in_range = sec.get_nonius_in_range(result)
+        assert in_range.in_range_max == 40.0
+        assert in_range.in_range_min == 30.0
+
+
+class TestNoniusInRangeValues:
+    def _make_result(self, mocker, *, max_pct, min_pct, range_limit=256):
+        """Create a mock AnalyzeResult with margins expressed as % of the range limit.
+
+        Args:
+            mocker: The pytest-mock fixture for creating mocks.
+            max_pct: Positive margin as a percentage of the range limit.
+            min_pct: Negative margin as a percentage of the range limit.
+            range_limit: The nonius phase range limit.
+
+        Returns:
+            A mock AnalyzeResult with the specified nonius phase margins.
+        """
+        result = mocker.MagicMock()
+        result.nonius_phase_range_limit.return_value = range_limit
+        result.nonius_phase_margin_max.return_value = max_pct / 100 * range_limit
+        result.nonius_phase_margin_min.return_value = -(min_pct / 100 * range_limit)
+        return result
+
+    @pytest.mark.parametrize(
+        ("max_pct", "min_pct"),
+        [(50.0, 50.0), (70.0, 50.0), (50.0, 70.0), (70.0, 70.0), (0.0, 0.0), (100.0, 100.0)],
+    )
+    def test_percentages_match_margins(self, mocker, max_pct, min_pct) -> None:
+        """get_nonius_in_range() converts both margins to percentages of the range limit."""
+        sec = _SingleEncoderCalibration(mocker.MagicMock(number=1))
+        result = self._make_result(mocker, max_pct=max_pct, min_pct=min_pct)
+
+        in_range = sec.get_nonius_in_range(result)
+
+        assert in_range.in_range_max == pytest.approx(max_pct)
+        assert in_range.in_range_min == pytest.approx(min_pct)
+
+    def test_returns_raw_margins_and_limit(self, mocker) -> None:
+        """The raw LSB margins and range limit are passed through unchanged."""
+        sec = _SingleEncoderCalibration(mocker.MagicMock(number=1))
+        result = self._make_result(mocker, max_pct=25, min_pct=75, range_limit=256)
+
+        in_range = sec.get_nonius_in_range(result)
+
+        assert in_range.range_limit == 256
+        assert in_range.margin_max == pytest.approx(64)
+        assert in_range.margin_min == pytest.approx(-192)
+
+
+class TestCalibrateInRange:
+    """In-range values are propagated on success and omitted on failure."""
+
+    def test_finalize_logs_and_reports_in_range(self, mocker, mu_3sl_mock, tmp_path) -> None:
+        """finalize() appends the nonius phase margin entry and fills CalibrationResult."""
+        enc = mocker.MagicMock(number=1)
+        sec = _SingleEncoderCalibration(enc)
+        sec.iteration_count = 2
+
+        conv = _make_converged_analyze_result(mocker)  # limit=1000, max=400, min=-400
+        conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
+        cal_obj = mocker.MagicMock(name="Calibration")
+        cal_obj.analyze_raw_data.return_value = conv
+        sec._cal = cal_obj
+        sec.last_analyze_result = conv
+        sec.last_raw_data = ([1, 2, 3], [4, 5, 6])
+
+        mu_3sl_mock.nonius_track_offset_table_parameters.return_value = mocker.MagicMock(
+            spo_base=0,
+            spo_n=list(range(15)),
+        )
+
+        result = sec.finalize(tmp_path)
+
+        entry = sec.iteration_log[-1]["nonius phase margin"]
+        assert entry["InRange max %"] == pytest.approx(40.0)
+        assert entry["InRange min %"] == pytest.approx(40.0)
+        assert entry["phase margin max"] == 400
+        assert entry["phase margin min"] == -400
+        assert entry["phase range limit"] == 1000
+
+        assert result.success is True
+        assert result.iterations == 2
+        assert result.nonius_in_range_max == pytest.approx(40.0)
+        assert result.nonius_in_range_min == pytest.approx(40.0)
+
+    def test_in_range_is_none_when_not_converged(
+        self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
+    ) -> None:
+        """A failed calibration reports no in-range values."""
+        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
+        _patch_encoder(enc, mocker)
+
+        not_conv = _make_not_converged_analyze_result(mocker)
+        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [not_conv, not_conv, not_conv])
+
+        results = cal.calibrate()
+
+        assert results[1].success is False
+        assert results[1].nonius_in_range_max is None
+        assert results[1].nonius_in_range_min is None
+
+
+class TestSaveStateProtocolGuard:
+    """Calibration requires BiSS-C: raw-mode framing is meaningless otherwise."""
+
+    def test_raises_when_not_bissc(self, mocker, mock_encoder_config, mock_mc) -> None:
+        """A non-BiSS-C sensor must be rejected before any register is touched."""
+        enc = Encoder(mock_mc, SensorType.ABS1, axis=1, config=mock_encoder_config)
+        mocker.patch.object(
+            type(enc), "is_bissc", new_callable=mocker.PropertyMock, return_value=False
+        )
+        mocker.patch.object(enc, "apply_config")
+        sec = _SingleEncoderCalibration(enc)
+
+        with pytest.raises(ValueError, match="not set as a BiSS-C sensor"):
+            sec.save_state()
+
+        # The guard must short-circuit: no configuration may be written.
+        enc.apply_config.assert_not_called()
+
+
+class TestAcquireRawData:
+    """PDO exchange failures must abort acquisition instead of returning empty data."""
+
+    @pytest.fixture
+    def fast_calibrator(self, mock_mc, tmp_path, mocker):
+        """Calibrator with a short capture window and no real sleeping.
+
+        Returns:
+            An EncoderCalibrator whose acquisition loop runs instantly.
+        """
+        mocker.patch("ic_haus_magnetic_encoder_calibration.calibrator.time.sleep")
+        return EncoderCalibrator(
+            mock_mc, axis=1, max_iterations=1, output_dir=tmp_path, capture_duration=1.0
+        )
+
+    def test_raises_when_pdo_thread_died(
+        self, fast_calibrator, mocker, mock_encoder_config
+    ) -> None:
+        """A dead PDO exchange yields silently truncated data, so it must raise instead."""
+        fast_calibrator.add_encoder(SensorType.ABS1, mock_encoder_config)
+        mocker.patch.object(
+            type(fast_calibrator._motor),
+            "pdo_exception",
+            new_callable=mocker.PropertyMock,
+            return_value=RuntimeError("slave lost"),
+        )
+
+        with pytest.raises(RuntimeError, match="PDO exchange died: slave lost"):
+            fast_calibrator._acquire_raw_data()
+
+    def test_stops_collecting_when_pdo_thread_died(
+        self, fast_calibrator, mocker, mock_encoder_config
+    ) -> None:
+        """The collecting flag must not stay latched after an aborted acquisition,
+        otherwise the callback keeps appending into a stale buffer."""
+        fast_calibrator.add_encoder(SensorType.ABS1, mock_encoder_config)
+        mocker.patch.object(
+            type(fast_calibrator._motor),
+            "pdo_exception",
+            new_callable=mocker.PropertyMock,
+            return_value=RuntimeError("slave lost"),
+        )
+
+        with pytest.raises(RuntimeError):
+            fast_calibrator._acquire_raw_data()
+
+        assert fast_calibrator._pdo_collecting is False
+
+    def test_returns_per_encoder_columns_on_success(
+        self, mock_mc, tmp_path, mocker, mock_encoder_config
+    ) -> None:
+        """Row-major PDO samples are transposed into one column per encoder."""
+        cal = EncoderCalibrator(
+            mock_mc, axis=1, max_iterations=1, output_dir=tmp_path, capture_duration=1.0
+        )
+        cal.add_encoder(SensorType.ABS1, mock_encoder_config)
+        cal.add_encoder(SensorType.SSI2, mock_encoder_config)
+        mocker.patch.object(
+            type(cal._motor),
+            "pdo_exception",
+            new_callable=mocker.PropertyMock,
+            return_value=None,
+        )
+
+        # The buffer is cleared on entry, so frames must be injected *during* the
+        # capture window. Each patched sleep stands in for one PDO callback.
+        # capture_duration=1.0 with a 0.5 s poll -> exactly two sleeps.
+        frames = deque([[10, 20], [11, 21]])
+        mocker.patch(
+            "ic_haus_magnetic_encoder_calibration.calibrator.time.sleep",
+            side_effect=lambda _s: cal._pdo_buffer.append(frames.popleft()),
+        )
+
+        result = cal._acquire_raw_data()
+
+        assert result == {1: [10, 11], 2: [20, 21]}

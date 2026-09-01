@@ -26,9 +26,13 @@ from ic_haus_magnetic_encoder_calibration.config_loader import (
 from .drive_encoder_registers import (
     CALIB_ERROR_TOLERANCE,
     CALIB_FRAME_SIZE,
+    CALIB_FRAME_TYPE,
+    CALIB_POLARITY,
     CALIB_POS_BITS,
+    CALIB_POS_OFFSET,
     CALIB_POS_ST_BITS,
     CALIB_POS_START_BIT,
+    CALIB_PROTOCOL,
     DriveEncoderRegisters,
     get_encoder_registers,
 )
@@ -119,9 +123,12 @@ class DriveFrameConfig:
     """Drive encoder BiSS frame configuration."""
 
     frame_size: int
+    frame_type: int
     pos_bits: int
     pos_st_bits: int
     pos_start_bit: int
+    pos_offset: int
+    polarity: int
     error_tolerance: int
 
 
@@ -148,6 +155,8 @@ class CalibrationResult:
     nonius_adjustments: Optional[mu_3sl.AnalogTrackAdjustments] = None
     spo_base: int = 0
     spo_n: list[int] = field(default_factory=list)
+    nonius_in_range_max: Optional[float] = None
+    nonius_in_range_min: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +284,17 @@ class Encoder:
 
     # -- Step 1: Revision --
 
+    @property
+    def is_bissc(self) -> bool:
+        """Check if the encoder is configured for BiSS-C protocol.
+
+        Returns:
+            True if the drive encoder protocol is BiSS-C, False otherwise.
+
+        """
+        protocol_val = self._read_drive(self._regs.protocol)
+        return protocol_val == CALIB_PROTOCOL
+
     def read_revision(self) -> mu_3sl.Revision:
         """Read the iC-MU hardware revision code.
 
@@ -306,9 +326,12 @@ class Encoder:
         r = self._regs
         return DriveFrameConfig(
             frame_size=self._read_drive(r.frame_size),
+            frame_type=self._read_drive(r.frame_type),
             pos_bits=self._read_drive(r.pos_bits),
             pos_st_bits=self._read_drive(r.pos_st_bits),
             pos_start_bit=self._read_drive(r.pos_start_bit),
+            pos_offset=self._read_drive(r.pos_offset),
+            polarity=self._read_drive(r.polarity),
             error_tolerance=self._read_drive(r.error_tolerance),
         )
 
@@ -320,9 +343,12 @@ class Encoder:
         """
         r = self._regs
         self._write_drive(r.frame_size, config.frame_size)
+        self._write_drive(r.frame_type, config.frame_type)
         self._write_drive(r.pos_bits, config.pos_bits)
         self._write_drive(r.pos_st_bits, config.pos_st_bits)
         self._write_drive(r.pos_start_bit, config.pos_start_bit)
+        self._write_drive(r.pos_offset, config.pos_offset)
+        self._write_drive(r.polarity, config.polarity)
         self._write_drive(r.error_tolerance, config.error_tolerance)
         logger.info(f"Encoder {self._number}: drive frame config applied.")
 
@@ -423,10 +449,12 @@ class Encoder:
         # Configure drive frame for calibration
         r = self._regs
         self._write_drive(r.frame_size, CALIB_FRAME_SIZE)
+        self._write_drive(r.frame_type, CALIB_FRAME_TYPE)
         self._write_drive(r.pos_bits, CALIB_POS_BITS)
         self._write_drive(r.pos_st_bits, CALIB_POS_ST_BITS)
         self._write_drive(r.pos_start_bit, CALIB_POS_START_BIT)
-
+        self._write_drive(r.pos_offset, CALIB_POS_OFFSET)
+        self._write_drive(r.polarity, CALIB_POLARITY)
         # Raise error tolerance after the frame change to prevent the
         # drive from freezing POS_VALUE during transient CRC mismatches.
         self._write_drive(r.error_tolerance, CALIB_ERROR_TOLERANCE)

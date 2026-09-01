@@ -83,6 +83,11 @@ class MotorControl:
         servo = self._mc.servos["default"]
         return servo.dictionary.is_safe
 
+    @property
+    def pdo_exception(self) -> Optional[Exception]:
+        """Last exception raised by the PDO exchange thread, if any."""
+        return self._pdo_exception
+
     def _on_pdo_exception(self, exc: Exception) -> None:
         """Callback for PDO exchange thread exceptions."""
         self._pdo_exception = exc

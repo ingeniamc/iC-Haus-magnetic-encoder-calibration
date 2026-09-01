@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.4] - 2026-09-01
+### Added
+- Calibration tuning guide "docs\calibration_tuning.md" with troubleshooting section.
+- InRange % values to calibration output.
+- `--save-nonius-track` flag for Nonius track plot generation.
+- Missing drive registers on drive-calibration-mode.
+
+### Removed
+- `interactive plots` feature
+
+
 ## [0.1.3] - 2026-07-29
 ### Added
 - Add support for python to 3.9.

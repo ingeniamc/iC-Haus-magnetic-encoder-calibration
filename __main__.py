@@ -169,10 +169,22 @@ def parse_args() -> argparse.Namespace:
         help="Save JSON export of calibration data (default: true)",
     )
     parser.add_argument(
+        "--save-nonius-track",
+        type=_parse_bool,
+        default=False,
+        metavar="BOOL",
+        help="Save nonius track plots (default: false)",
+    )
+    parser.add_argument(
         "--drive-config",
         type=Path,
         default=None,
-        help="Path to an XCF configuration file to load onto the drive before calibration",
+        help=(
+            "Path to an XCF configuration file to load onto the drive before calibration. "
+            "During calibration, the drive configuration will be temporarily modified to "
+            "set the required BiSS-C frame geometry for drive-encoder communication. "
+            "The original configuration will be restored once calibration is complete."
+        ),
     )
     parser.add_argument(
         "--encoder-config",
@@ -189,13 +201,20 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Run the iC-Haus magnetic encoder calibration."""
+    """Run the iC-Haus magnetic encoder calibration.
+
+    Raises:
+        ValueError: If the encoder configuration file is invalid or missing required fields.
+
+    """
     args = parse_args()
 
+    # Set log level based on verbosity flag
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
     )
+    logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
     mc = MotionController()
     mc.communication.connect_servo_ethercat(
@@ -221,6 +240,7 @@ def main() -> None:
         save_residual_bar_plots=args.save_residual_bar_plots,
         save_trend_plot=args.save_trend_plot,
         save_json=args.save_json,
+        save_nonius_track=args.save_nonius_track,
     )
 
     # Load encoder configurations from JSON file if provided
@@ -240,7 +260,13 @@ def main() -> None:
     all_ok = True
     for enc_num, result in results.items():
         status = "SUCCESS" if result.success else "FAILED"
-        logger.info(f"Encoder {enc_num}: {status} ({result.iterations} iterations)")
+        result_msg = f"Encoder {enc_num}: {status} ({result.iterations} iterations) "
+        if result.success:
+            result_msg += (
+                f"(InRange %: Max={result.nonius_in_range_max:.2f}%, "
+                f"Min={result.nonius_in_range_min:.2f}%)"
+            )
+        logger.info(result_msg)
         if not result.success:
             all_ok = False
 
