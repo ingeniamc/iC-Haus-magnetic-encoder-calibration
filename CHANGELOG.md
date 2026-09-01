@@ -7,9 +7,6 @@
 - `--save-nonius-track` flag for Nonius track plot generation.
 - Missing drive registers on drive-calibration-mode.
 
-### Changed
-- Updated 
-
 ### Removed
 - `interactive plots` feature
 
