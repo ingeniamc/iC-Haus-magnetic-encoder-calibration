@@ -1,12 +1,16 @@
-"""Per-iteration diagnostic plots for encoder calibration.
+"""Diagnostic plots for encoder calibration.
 
-Generates three types of figures:
+Generates four types of figures:
 
 1. **Raw waveforms** - master and nonius 14-bit ADC signals vs sample index.
+   Generated per iteration.
 2. **Residuals bar chart** - the 8 analog residual values for the current
-   iteration with the convergence threshold line.
+   iteration with the convergence threshold line. Generated per iteration.
 3. **Residuals trend** - line chart showing how each residual evolves
-   across iterations (updated cumulatively).
+   across iterations (updated cumulatively). Generated per iteration.
+4. **Nonius curve** - master-to-nonius phase error, margin, and SPO curve
+   vs. reference angle, both per single revolution and continuously across
+   the full capture. Generated once, after the SPO table is finalized.
 
 Each figure is saved as a PNG.
 """
