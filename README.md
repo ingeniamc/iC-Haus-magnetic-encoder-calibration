@@ -127,11 +127,14 @@ Run `python __main__.py --help` for the full list.
 ## Calibration outputs folder
 
 After calibration, the `calibration_output/` directory contains diagnostic plots
-and JSON data for each encoder. The residuals trend shows how the analog
-parameters converge across iterations:
+and JSON data for each encoder:
+- The raw waveforms plot shows the master and nonius track data for an iteration.
+- The residuals bar chart shows the analog residuals LSB errors.
+- The residuals trend plot shows how the analog parameters converge across iterations.
+- The Nonius curve plot (generated once, after finalizing the SPO table) shows the master-to-nonius phase error, both per single revolution and continuously across the full capture.
+- The JSON file logs the raw ADC samples, analog adjustments, and residuals for each iteration, plus the final nonius phase margin and InRange % after finalization.
 
-![Residuals trend example](residuals_trend_example.png)
-
+![Output plots example](plots_example.png)
 
 ## Running tests - dev ONLY
 
