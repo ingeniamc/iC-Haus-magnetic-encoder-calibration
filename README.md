@@ -150,16 +150,17 @@ You might first need to install additional packages:
 
 ```bash
 poetry install --all-groups
+poetry run poe install-hw-tests
 ```
 
 Now run the tests:
 
 ```bash
 # Unit tests (no hardware required)
-pytest tests/ -m "not hardware"
+poetry run pytest tests/ -m "not hardware"
 
 # Hardware tests (requires a connected drive)
-pytest tests/ -m hardware --setup=tests.setups.tests_setup.MY_SETUP
+poetry run pytest tests/ -m hardware --setup=tests.setups.tests_setup.MY_SETUP
 ```
 
 ## Project structure

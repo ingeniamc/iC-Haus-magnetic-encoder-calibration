@@ -75,7 +75,6 @@ optional = true
 pytest = "==8.4.1"
 pytest-cov = "==7.0.0"
 pytest-mock = "==3.15.1"
-summit-testing-framework = {version = "==0.3.0"}
  
 # Dependencies for build task 
 [tool.poetry.group.build]
@@ -128,6 +127,10 @@ sequence = ["ruff-format", "ruff-check-fix"]
 help = "Run type checks"
 cmd = "mypy ic_haus_magnetic_encoder_calibration"
 
+# ---------------------------- Install Novanta-only hardware testing framework -----------------------------
+[tool.poe.tasks.install-hw-tests]
+help = "Install the Novanta-only hardware testing framework (requires Novanta network)"
+cmd = "pip install summit-testing-framework==0.3.0 --index-url http://pypi.novanta.com/simple --trusted-host pypi.novanta.com"
 # ----------------------------- Run unit tests -----------------------------
 [tool.poe.tasks.tests]
 cmd = "python -I -m pytest tests -m \"not hardware\""
