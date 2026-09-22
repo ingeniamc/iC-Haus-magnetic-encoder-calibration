@@ -144,13 +144,13 @@ and JSON data for each encoder:
 
 ![Output plots example](plots_example.png)
 
-## Running tests - dev ONLY
+## Running tests - dev ONLY - Requires Novanta network
 
-You might first need to install additional packages:
+`summit-testing-framework` is required to run any test. Install it first:
 
 ```bash
 poetry install --all-groups
-poetry run poe install-hw-tests
+poetry run poe install-test-deps
 ```
 
 Now run the tests:

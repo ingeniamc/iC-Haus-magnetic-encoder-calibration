@@ -127,9 +127,9 @@ sequence = ["ruff-format", "ruff-check-fix"]
 help = "Run type checks"
 cmd = "mypy ic_haus_magnetic_encoder_calibration"
 
-# ---------------------------- Install Novanta-only hardware testing framework -----------------------------
-[tool.poe.tasks.install-hw-tests]
-help = "Install the Novanta-only hardware testing framework (requires Novanta network)"
+# ---------------------------- Install Novanta-only test dependencies -----------------------------
+[tool.poe.tasks.install-test-deps]
+help = "Install the Novanta-only test framework (requires Novanta network)"
 cmd = "pip install summit-testing-framework==0.3.0 --index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com"
 # ----------------------------- Run unit tests -----------------------------
 [tool.poe.tasks.tests]

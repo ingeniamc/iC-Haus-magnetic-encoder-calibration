@@ -116,6 +116,15 @@ pipeline {
                         }
                     }
                 }
+                stage('Install test dependencies') {
+                    steps {
+                        script {
+                            venvManager.forEachEnvironment() { venv ->
+                                venv.run("poetry run poe install-test-deps")
+                            }
+                        }
+                    }
+                }
                 stage('Run tests') {
                     steps {
                         script {
