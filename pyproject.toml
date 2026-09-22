@@ -130,7 +130,7 @@ cmd = "mypy ic_haus_magnetic_encoder_calibration"
 # ---------------------------- Install Novanta-only hardware testing framework -----------------------------
 [tool.poe.tasks.install-hw-tests]
 help = "Install the Novanta-only hardware testing framework (requires Novanta network)"
-cmd = "pip install summit-testing-framework==0.3.0 --index-url http://pypi.novanta.com/simple --trusted-host pypi.novanta.com"
+cmd = "pip install summit-testing-framework==0.3.0 --index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com"
 # ----------------------------- Run unit tests -----------------------------
 [tool.poe.tasks.tests]
 cmd = "python -I -m pytest tests -m \"not hardware\""
