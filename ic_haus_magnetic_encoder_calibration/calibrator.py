@@ -506,7 +506,7 @@ class _SingleEncoderCalibration:
         )
 
 
-class EncoderCalibrator:
+class EncodersCalibrator:
     """Orchestrates calibration for one or more iC-MU encoders.
 
     Data acquisition uses a TPDO map registered alongside the FSoE
