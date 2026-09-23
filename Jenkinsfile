@@ -55,7 +55,7 @@ pipeline {
                 stage('Fetch local dependencies') {
                     steps {
                         script {
-                            venvManager.runInWorkingFolder("pip download mu-3sl==3.4.3.1.post2 --no-deps -d libs --index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com")
+                            venvManager.runInWorkingFolder("pip download mu-3sl==3.4.5.1 --no-deps -d libs --index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com")
                         }
                     }
                 }
@@ -113,6 +113,15 @@ pipeline {
                                 venv.run("poetry run poe pyinstaller-cli")
                             }
                             venvManager.runInWorkingFolder("dist\\ic_haus_magnetic_encoder_calibration.exe --help")
+                        }
+                    }
+                }
+                stage('Install test dependencies') {
+                    steps {
+                        script {
+                            venvManager.forEachEnvironment() { venv ->
+                                venv.run("poetry run poe install-test-deps")
+                            }
                         }
                     }
                 }

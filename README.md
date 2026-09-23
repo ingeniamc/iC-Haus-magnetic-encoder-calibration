@@ -33,6 +33,14 @@ The library is not publicly downloadable and must be requested from iC-Haus:
 2. Submit a request for access to the `mu-3sl` library.
 3. Make sure the downloaded `mu-3sl` version supports your application's encoder type.
 
+
+**Warning! - This project requires a specific version of the **mu_3sl** library.**
+The required version is documented in [libs/README.md](libs/README.md).
+If the version currently available on the iC-Haus website does not match the required version, you have the following options:
+- Contact iC-Haus and request the required library version.
+- Update the mu_3sl dependency version in `pyproject.toml` and install a newer library version. However, newer versions have not been validated with this project and may introduce compatibility issues or cause the calibration script to fail.
+**Note:** Software releases are tested against a specific mu_3sl version. Using a different version is not recommended unless compatibility has been verified.
+
 ## Installation
 
 1. Place the `mu-3sl` library file `.whl` inside the `/libs` folder. 
@@ -136,22 +144,23 @@ and JSON data for each encoder:
 
 ![Output plots example](plots_example.png)
 
-## Running tests - dev ONLY
+## Running tests - dev ONLY - Requires Novanta network
 
-You might first need to install additional packages:
+`summit-testing-framework` is required to run any test. Install it first:
 
 ```bash
 poetry install --all-groups
+poetry run poe install-test-deps
 ```
 
 Now run the tests:
 
 ```bash
 # Unit tests (no hardware required)
-pytest tests/ -m "not hardware"
+poetry run pytest tests/ -m "not hardware"
 
 # Hardware tests (requires a connected drive)
-pytest tests/ -m hardware --setup=tests.setups.tests_setup.MY_SETUP
+poetry run pytest tests/ -m hardware --setup=tests.setups.tests_setup.MY_SETUP
 ```
 
 ## Project structure
