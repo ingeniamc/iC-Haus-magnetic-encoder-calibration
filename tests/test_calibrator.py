@@ -5,7 +5,7 @@ import pytest
 from ingeniamotion.enums import SensorType
 
 from ic_haus_magnetic_encoder_calibration.calibrator import (
-    EncoderCalibrator,
+    EncodersCalibrator,
     _SingleEncoderCalibration,
 )
 from ic_haus_magnetic_encoder_calibration.config_loader import EncoderRegisterConfig
@@ -31,7 +31,7 @@ class TestSplitRawPayload:
 
 @pytest.fixture
 def calibrator(mock_mc, tmp_path):
-    return EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+    return EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
 
 
 class TestCalibrateNoEncoders:
@@ -151,6 +151,16 @@ def _make_not_converged_analyze_result(mocker):
     return result
 
 
+def _patch_drive(motor, mocker):
+    """Mock all motor-drive methods used by calibrate() to avoid real BiSS calls."""
+    mocker.patch.object(
+        motor,
+        "get_drive_feedbacks_config",
+        return_value=mocker.MagicMock(name="SavedFeedbacks"),
+    )
+    mocker.patch.object(motor, "set_drive_feedbacks_config")
+
+
 def _patch_encoder(enc, mocker):
     """Mock all Encoder methods used by calibrate() to avoid real BiSS calls."""
     mocker.patch.object(type(enc), "is_bissc", new_callable=mocker.PropertyMock, return_value=True)
@@ -225,6 +235,27 @@ def mu_3sl_mock(mocker):
 # ---------------------------------------------------------------------------
 
 
+class TestCalibrateSetup:
+    """Config is saved and applied on setup."""
+
+    def test_applies_config_before_calibration(
+        self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
+    ) -> None:
+        """apply_config() is called during save_state (before calibration loop)."""
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
+        _patch_encoder(enc, mocker)
+        mocker.patch.object(enc, "apply_config")
+
+        conv = _make_converged_analyze_result(mocker)
+        conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
+        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv])
+
+        cal.calibrate()
+
+        enc.apply_config.assert_called_once()
+
+
 class TestCalibrateConvergence:
     """Core calibration flow: convergence detection, iteration, analog adjustment."""
 
@@ -233,7 +264,7 @@ class TestCalibrateConvergence:
     ) -> None:
         """Single encoder converges on first try -> success, EEPROM saved."""
 
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
         _patch_encoder(enc, mocker)
 
@@ -250,7 +281,7 @@ class TestCalibrateConvergence:
         self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
     ) -> None:
         """Not converged -> adjusts analog params -> converges on iteration 2."""
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
         _patch_encoder(enc, mocker)
 
@@ -271,32 +302,11 @@ class TestCalibrateConvergence:
         enc.write_analog_adjustments.assert_called_once()
         cal_obj.adjust_analog_by_analyze_result.assert_called_once()
 
-    def test_non_convergence_loads_config(
-        self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
-    ) -> None:
-        """If never converges, configuration is loaded onto EEPROM."""
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
-        enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
-        _patch_encoder(enc, mocker)
-
-        not_conv = _make_not_converged_analyze_result(mocker)
-        _setup_converging_calibration(
-            cal,
-            mocker,
-            mu_3sl_mock,
-            [not_conv, not_conv, not_conv],
-        )
-
-        results = cal.calibrate()
-
-        assert results[1].success is False
-        enc.save_to_eeprom.assert_called_once()
-
     def test_syncs_dll_state_before_analysis(
         self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
     ) -> None:
         """B1 fix: read_analog_adjustments -> set_current before analyze_raw_data."""
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
         _patch_encoder(enc, mocker)
         master_adj = mocker.MagicMock(name="m_adj")
@@ -326,7 +336,7 @@ class TestCalibrateBothEncoders:
     def test_both_converge(self, mock_mc, mocker, tmp_path, mock_encoder_config) -> None:
         """Both encoder 1 and encoder 2 converge, EEPROM saved for both."""
         mu_mock = mocker.patch("ic_haus_magnetic_encoder_calibration.calibrator.mu_3sl")
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
 
         enc1 = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
         enc2 = cal.add_encoder(SensorType.SSI2, mock_encoder_config)
@@ -374,7 +384,7 @@ class TestCalibrateBothEncoders:
     def test_mixed_results(self, mock_mc, mocker, tmp_path, mock_encoder_config) -> None:
         """Encoder 1 converges, encoder 2 does not."""
         mu_mock = mocker.patch("ic_haus_magnetic_encoder_calibration.calibrator.mu_3sl")
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
 
         enc1 = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
         enc2 = cal.add_encoder(SensorType.SSI2, mock_encoder_config)
@@ -422,28 +432,16 @@ class TestCalibrateBothEncoders:
 class TestCalibrateRestore:
     """Config is always restored: on success, non-convergence, and exception."""
 
-    def test_applies_config_before_calibration(
-        self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
-    ) -> None:
-        """apply_config() is called during save_state (before calibration loop)."""
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
-        enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
-        _patch_encoder(enc, mocker)
-        mocker.patch.object(enc, "apply_config")
-
-        conv = _make_converged_analyze_result(mocker)
-        conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
-        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv])
-
-        cal.calibrate()
-
-        enc.apply_config.assert_called_once()
-
     def test_restores_on_success(
         self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
     ) -> None:
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
+        # Patch drive
+        _patch_drive(cal._motor, mocker)
+        saved_feedbacks = mocker.MagicMock(name="SavedFeedbacks")
+        cal._motor.get_drive_feedbacks_config.return_value = saved_feedbacks
+        # Path encoder
         _patch_encoder(enc, mocker)
         saved_drive = mocker.MagicMock(name="SavedDrive")
         saved_ic = mocker.MagicMock(name="SavedIC")
@@ -454,17 +452,26 @@ class TestCalibrateRestore:
         conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
         _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv])
 
+        cal.configure_drive_encoders()
         cal.calibrate()
 
+        cal._motor.set_drive_feedbacks_config.assert_called_with(saved_feedbacks)
         enc.set_drive_config.assert_called_with(saved_drive)
+        enc.save_to_eeprom.assert_called_once()
+        enc.abs_reset.assert_called_once()
         enc.set_ic_config.assert_called_with(saved_ic)
 
     def test_restores_on_non_convergence(
         self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
     ) -> None:
         """Drive and iC-MU config are restored even when calibration does not converge."""
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
+        # Patch drive
+        _patch_drive(cal._motor, mocker)
+        saved_feedbacks = mocker.MagicMock(name="SavedFeedbacks")
+        cal._motor.get_drive_feedbacks_config.return_value = saved_feedbacks
+        # Path encoder
         _patch_encoder(enc, mocker)
         saved_drive = mocker.MagicMock(name="SavedDrive")
         saved_ic = mocker.MagicMock(name="SavedIC")
@@ -474,17 +481,26 @@ class TestCalibrateRestore:
         not_conv = _make_not_converged_analyze_result(mocker)
         _setup_converging_calibration(cal, mocker, mu_3sl_mock, [not_conv, not_conv, not_conv])
 
+        cal.configure_drive_encoders()
         results = cal.calibrate()
 
         assert results[1].success is False
+        cal._motor.set_drive_feedbacks_config.assert_called_with(saved_feedbacks)
         enc.set_ic_config.assert_called_with(saved_ic)
+        enc.save_to_eeprom.assert_called_once()
+        enc.abs_reset.assert_called_once()
         enc.set_drive_config.assert_called_with(saved_drive)
 
     def test_restores_on_exception(
         self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
     ) -> None:
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
+        # Patch drive
+        _patch_drive(cal._motor, mocker)
+        saved_feedbacks = mocker.MagicMock(name="SavedFeedbacks")
+        cal._motor.get_drive_feedbacks_config.return_value = saved_feedbacks
+        # Path encoder
         _patch_encoder(enc, mocker)
         saved_drive = mocker.MagicMock(name="SavedDrive")
         saved_ic = mocker.MagicMock(name="SavedIC")
@@ -509,11 +525,69 @@ class TestCalibrateRestore:
             side_effect=RuntimeError("connection lost"),
         )
 
+        cal.configure_drive_encoders()
+
         with pytest.raises(RuntimeError, match="connection lost"):
             cal.calibrate()
 
+        cal._motor.set_drive_feedbacks_config.assert_called_with(saved_feedbacks)
         enc.set_ic_config.assert_called_with(saved_ic)
+        enc.save_to_eeprom.assert_called_once()
+        enc.abs_reset.assert_called_once()
         enc.set_drive_config.assert_called_with(saved_drive)
+
+    def test_logs_warning_when_feedbacks_config_not_saved(
+        self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config, caplog
+    ) -> None:
+        """If configure_drive_encoders() was never called, restore is skipped and logged."""
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
+        _patch_drive(cal._motor, mocker)
+        _patch_encoder(enc, mocker)
+
+        conv = _make_converged_analyze_result(mocker)
+        conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
+        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv])
+
+        with caplog.at_level("WARNING"):
+            cal.calibrate()
+
+        cal._motor.set_drive_feedbacks_config.assert_not_called()
+        assert "could not be restored" in caplog.text
+
+
+class TestConfigureDriveEncoders:
+    """Verify drive feedback config is saved before being overwritten."""
+
+    def test_saves_then_applies_feedback_config(
+        self, mock_mc, mocker, tmp_path, mock_encoder_config
+    ) -> None:
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        cal.add_encoder(SensorType.ABS1, mock_encoder_config)
+        saved = mocker.MagicMock(name="SavedFeedbacks")
+        mocker.patch.object(cal._motor, "get_drive_feedbacks_config", return_value=saved)
+        mocker.patch.object(cal._motor, "configure_drive_feedbacks")
+
+        cal.configure_drive_encoders()
+
+        assert cal._saved_drive_feedbacks_config is saved
+        cal._motor.configure_drive_feedbacks.assert_called_once_with([SensorType.ABS1])
+
+    def test_passes_sensor_types_for_multiple_encoders(
+        self, mock_mc, mocker, tmp_path, mock_encoder_config
+    ) -> None:
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        cal.add_encoder(SensorType.ABS1, mock_encoder_config)
+        cal.add_encoder(SensorType.SSI2, mock_encoder_config)
+        mocker.patch.object(cal._motor, "get_drive_feedbacks_config")
+        mocker.patch.object(cal._motor, "configure_drive_feedbacks")
+
+        cal.configure_drive_encoders()
+
+        cal._motor.configure_drive_feedbacks.assert_called_once_with([
+            SensorType.ABS1,
+            SensorType.SSI2,
+        ])
 
 
 class TestAddEncoder:
@@ -521,7 +595,7 @@ class TestAddEncoder:
 
     def test_add_encoder_with_config(self, mock_mc, tmp_path, mock_encoder_config) -> None:
         """add_encoder() assigns the loaded config to the encoder instance."""
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
 
         # Check register configuration
@@ -561,7 +635,7 @@ class TestCalibrationHardware:
             filt=0x03,
         )
         # If needed, adjust the calibrator values to match your specific drive/encoder config
-        cal = EncoderCalibrator(mc, axis=1)
+        cal = EncodersCalibrator(mc, axis=1)
         enc1 = cal.add_encoder(SensorType.ABS1, config_enc1)
         enc2 = cal.add_encoder(SensorType.SSI2, config_enc2)
 
@@ -685,7 +759,7 @@ class TestCalibrateInRange:
         self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
     ) -> None:
         """A failed calibration reports no in-range values."""
-        cal = EncoderCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
+        cal = EncodersCalibrator(mock_mc, axis=1, max_iterations=3, output_dir=tmp_path)
         enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
         _patch_encoder(enc, mocker)
 
@@ -726,10 +800,10 @@ class TestAcquireRawData:
         """Calibrator with a short capture window and no real sleeping.
 
         Returns:
-            An EncoderCalibrator whose acquisition loop runs instantly.
+            An EncodersCalibrator whose acquisition loop runs instantly.
         """
         mocker.patch("ic_haus_magnetic_encoder_calibration.calibrator.time.sleep")
-        return EncoderCalibrator(
+        return EncodersCalibrator(
             mock_mc, axis=1, max_iterations=1, output_dir=tmp_path, capture_duration=1.0
         )
 
@@ -770,7 +844,7 @@ class TestAcquireRawData:
         self, mock_mc, tmp_path, mocker, mock_encoder_config
     ) -> None:
         """Row-major PDO samples are transposed into one column per encoder."""
-        cal = EncoderCalibrator(
+        cal = EncodersCalibrator(
             mock_mc, axis=1, max_iterations=1, output_dir=tmp_path, capture_duration=1.0
         )
         cal.add_encoder(SensorType.ABS1, mock_encoder_config)

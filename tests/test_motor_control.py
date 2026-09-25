@@ -6,7 +6,7 @@ from ingeniamotion.enums import SensorType
 from ic_haus_magnetic_encoder_calibration.config_loader import EncoderRegisterConfig
 from ic_haus_magnetic_encoder_calibration.encoder import Encoder
 from ic_haus_magnetic_encoder_calibration.ic_haus_registers import CFGEW
-from ic_haus_magnetic_encoder_calibration.motor_control import MotorControl
+from ic_haus_magnetic_encoder_calibration.motor_control import DriveFeedbacksConfig, MotorControl
 
 
 @pytest.fixture
@@ -215,6 +215,57 @@ class TestMotorSpinning:
         mock_mc.motion.motor_disable.assert_called_once()
 
 
+class TestDriveFeedbacksConfig:
+    def test_get_drive_feedbacks_config_reads_all_fields(self, motor, mock_mc) -> None:
+        mock_mc.configuration.get_commutation_feedback.return_value = SensorType.INTGEN
+        mock_mc.configuration.get_velocity_feedback.return_value = SensorType.INTGEN
+        mock_mc.configuration.get_position_feedback.return_value = SensorType.INTGEN
+        mock_mc.configuration.get_auxiliar_feedback.return_value = SensorType.ABS1
+        mock_mc.configuration.get_reference_feedback.return_value = SensorType.SSI2
+
+        config = motor.get_drive_feedbacks_config()
+
+        assert config.auxiliar_feedback == SensorType.ABS1
+        assert config.reference_feedback == SensorType.SSI2
+        mock_mc.configuration.get_commutation_feedback.assert_called_once_with(axis=1)
+
+    def test_set_drive_feedbacks_config_writes_all_fields(self, motor, mock_mc) -> None:
+        config = DriveFeedbacksConfig(
+            commutation_feedback=SensorType.INTGEN,
+            velocity_feedback=SensorType.INTGEN,
+            position_feedback=SensorType.INTGEN,
+            auxiliar_feedback=SensorType.ABS1,
+            reference_feedback=SensorType.SSI2,
+        )
+
+        motor.set_drive_feedbacks_config(config)
+
+        mock_mc.configuration.set_auxiliar_feedback.assert_called_once_with(
+            SensorType.ABS1, axis=1
+        )
+        mock_mc.configuration.set_reference_feedback.assert_called_once_with(
+            SensorType.SSI2, axis=1
+        )
+
+    def test_configure_drive_feedbacks_raises_on_empty_list(self, motor) -> None:
+        with pytest.raises(ValueError, match="No encoder sensor types provided"):
+            motor.configure_drive_feedbacks([])
+
+    def test_configure_drive_feedbacks_sets_auxiliary_only(self, motor, mock_mc) -> None:
+        """Single encoder -> auxiliary feedback set, reference feedback defaults to INTGEN."""
+        motor.configure_drive_feedbacks([SensorType.ABS1])
+
+        mock_mc.configuration.set_auxiliar_feedback.assert_called_with(SensorType.ABS1, axis=1)
+        mock_mc.configuration.set_reference_feedback.assert_called_with(SensorType.INTGEN, axis=1)
+
+    def test_configure_drive_feedbacks_sets_both(self, motor, mock_mc) -> None:
+        """Two encoders -> first is auxiliary, second is reference feedback."""
+        motor.configure_drive_feedbacks([SensorType.ABS1, SensorType.SSI2])
+
+        mock_mc.configuration.set_auxiliar_feedback.assert_called_with(SensorType.ABS1, axis=1)
+        mock_mc.configuration.set_reference_feedback.assert_called_with(SensorType.SSI2, axis=1)
+
+
 # ---------------------------------------------------------------------------
 #  Hardware integration tests (require a physical drive)
 # ---------------------------------------------------------------------------
@@ -258,8 +309,8 @@ class TestHasFsoeHardware:
 @pytest.mark.usefixtures(hw_encoder.__name__)
 class TestInternalGeneratorHardware:
     def test_start_and_stop_with_generator(self, hw_motor) -> None:
-        hw_motor.configure_encoders(
-            encoder_sensor_types=[],
+        hw_motor.configure_drive_feedbacks(
+            encoder_sensor_types=[SensorType.ABS1],
         )
         if hw_motor.has_fsoe:
             assert not hw_motor._fsoe_prepared
