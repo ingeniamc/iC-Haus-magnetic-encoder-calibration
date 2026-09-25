@@ -1,6 +1,6 @@
 """Orchestrates calibration across one or more iC-MU encoders.
 
-``EncoderCalibrator`` owns the motor movement logic and coordinates the
+``EncodersCalibrator`` owns the motor movement logic and coordinates the
 per-encoder calibration loop.  A single motor spin captures raw data from
 all enrolled encoders simultaneously; each encoder's analog calibration
 then proceeds independently.
@@ -853,7 +853,7 @@ class EncodersCalibrator:
             if self._saved_drive_feedbacks_config:
                 self._motor.set_drive_feedbacks_config(self._saved_drive_feedbacks_config)
             else:
-                logger.error("Drive feedback configuration was not saved, could not be restored.")
+                logger.warning("Drive feedback configuration was not saved, could not be restored.")
             # Restore encoders
             for enc in encoders:
                 enc.restore_state()

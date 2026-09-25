@@ -536,7 +536,7 @@ class TestCalibrateRestore:
         enc.abs_reset.assert_called_once()
         enc.set_drive_config.assert_called_with(saved_drive)
 
-    def test_logs_error_when_feedbacks_config_not_saved(
+    def test_logs_warning_when_feedbacks_config_not_saved(
         self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config, caplog
     ) -> None:
         """If configure_drive_encoders() was never called, restore is skipped and logged."""
@@ -549,7 +549,7 @@ class TestCalibrateRestore:
         conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
         _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv])
 
-        with caplog.at_level("ERROR"):
+        with caplog.at_level("WARNING"):
             cal.calibrate()
 
         cal._motor.set_drive_feedbacks_config.assert_not_called()
@@ -800,7 +800,7 @@ class TestAcquireRawData:
         """Calibrator with a short capture window and no real sleeping.
 
         Returns:
-            An EncoderCalibrator whose acquisition loop runs instantly.
+            An EncodersCalibrator whose acquisition loop runs instantly.
         """
         mocker.patch("ic_haus_magnetic_encoder_calibration.calibrator.time.sleep")
         return EncodersCalibrator(
