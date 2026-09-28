@@ -18,12 +18,15 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import mu_3sl_interface as mu_3sl
 from ingenialink.pdo import RPDOMap, RPDOMapItem, TPDOMap
 from ingeniamotion import MotionController
 from ingeniamotion.enums import SensorType
+
+if TYPE_CHECKING:
+    from ingeniamotion.feedbacks import FeedbacksConfiguration
 
 from ic_haus_magnetic_encoder_calibration.config_loader import (
     EncoderRegisterConfig,
@@ -36,7 +39,7 @@ from .encoder import (
     ICMURegisterState,
     split_raw_payload,
 )
-from .motor_control import DEFAULT_GEN_CURRENT, DEFAULT_GEN_FREQ, DriveFeedbacksConfig, MotorControl
+from .motor_control import DEFAULT_GEN_CURRENT, DEFAULT_GEN_FREQ, MotorControl
 from .plotting import (
     RESIDUAL_THRESHOLD,
     _plot_nonius_track_offset_table,
@@ -556,7 +559,7 @@ class EncodersCalibrator:
             mc, axis=axis, gen_frequency=gen_frequency, gen_current=gen_current
         )
         self._encoders: list[Encoder] = []
-        self._saved_drive_feedbacks_config: Optional[DriveFeedbacksConfig] = None
+        self._saved_drive_feedbacks_config: Optional[FeedbacksConfiguration] = None
         self._output_dir = output_dir or Path("calibration_output")
         self._save_raw_plots = save_raw_plots
         self._save_residual_bar_plots = save_residual_bar_plots
