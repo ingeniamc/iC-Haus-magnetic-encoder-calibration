@@ -170,7 +170,7 @@ flowchart TD
     DRVREG["drive_encoder_registers.py<br/>DriveEncoderRegisters dataclass<br/>Drive register name mappings"]
     CFG["config_loader.py<br/>EncoderRegisterConfig dataclass<br/>(register values: OUT_MSB, OUT_LSB,<br/>MODE_ST, ENAC, CFGEW, FILT)<br/>load_encoders_configuration_file()<br/>(optional: reads config/encoders.json)"]
     ENC["encoder.py<br/>Encoder class<br/>Single encoder operations<br/>BiSS R/W, save/restore,<br/>CalibrationResult dataclass"]
-    MOT["motor_control.py<br/>MotorControl class<br/>FSoE lifecycle, motor_spinning(),<br/>configure_encoders() + current ramp"]
+    MOT["motor_control.py<br/>MotorControl class<br/>FSoE lifecycle, motor_spinning(),<br/>configure_drive_feedbacks() + current ramp"]
     CAL["calibrator.py<br/>EncodersCalibrator class<br/>_SingleEncoderCalibration per-encoder state<br/>TPDO data acquisition, diagnostic plots"]
     PLOT["plotting.py<br/>Diagnostic plot functions<br/>raw waveforms, residual bars, trend"]
 
@@ -209,7 +209,7 @@ flowchart TD
 
     CONFIGURE --> CALIBRATE["**calibrator.calibrate()**"]
 
-    CALIBRATE --> FEEDBACK_SAVE["configure_drive_encoders() already saved the<br/>pre-calibration DriveFeedbacksConfig<br/>(restored in the outer finally, see CLEANUP)"]
+    CALIBRATE --> FEEDBACK_SAVE["configure_drive_encoders() already saved the<br/>pre-calibration FeedbacksConfiguration<br/>(restored in the outer finally, see CLEANUP)"]
 
     FEEDBACK_SAVE --> SETUP["**For each Encoder — setup phases:**<br/>1. apply_config() (write registers from encoders.json)<br/>2. Read revision, save drive config, save iC-MU config<br/>3. configure_in_calibration_mode() (CFGEW=0xFF suppress)<br/>4. reset_analog_to_factory_defaults()"]
 
@@ -369,7 +369,9 @@ classDiagram
         +mc: MotionController
         +gen_frequency: float
         +has_fsoe: bool
-        +configure_encoders(encoder_sensor_types: list~SensorType~)
+        +get_drive_feedbacks_config() FeedbacksConfiguration
+        +set_drive_feedbacks_config(config: FeedbacksConfiguration)
+        +configure_drive_feedbacks(encoder_sensor_types: list~SensorType~)
         +prepare_fsoe()
         +activate_pdos(refresh_rate)
         +stop_pdos_and_fsoe()
@@ -421,7 +423,7 @@ classDiagram
         -_pdo_buffer: deque
         -_pdo_lock: Lock
         -_pdo_collecting: bool
-        -_saved_drive_feedbacks_config: DriveFeedbacksConfig?
+        -_saved_drive_feedbacks_config: FeedbacksConfiguration?
         +encoders: list~Encoder~
         +add_encoder(sensor_type, sensor_config) Encoder
         +configure_drive_encoders()
@@ -463,7 +465,7 @@ classDiagram
 >
 > **_SingleEncoderCalibration**: Per-encoder calibration state and iteration logic. Tracks calibration progress through setup (save state, enter calibration mode, reset analog), iterative analysis (`process_iteration()`), and cleanup (`restore_state()`, `finalize()`). Owns the mu_3sl `Calibration` object and stores residual history, iteration log, and the last analysis result. `get_nonius_in_range()` computes the Nonius "In Range" margin percentages (`NoniusInRangeResult`), matching the iC-Haus GUI calculation.
 >
-> **EncodersCalibrator**: Orchestrates calibration across N encoders. The caller must: (1) obtain encoder configs (via `load_encoders_configuration_file()` from JSON or by creating `EncoderRegisterConfig` objects directly), (2) create the calibrator, (3) call `add_encoder(sensor_type, config)` for each sensor to enroll (configs are **required**), (4) call `configure_drive_encoders()` to set up the drive, and (5) call `calibrate()` to run the loop. `configure_drive_encoders()` saves the drive's pre-calibration `DriveFeedbacksConfig` (via `MotorControl.get_drive_feedbacks_config()`) before applying the calibration feedback setup; `calibrate()` restores it (via `MotorControl.set_drive_feedbacks_config()`) in its outer `finally` block, whether calibration succeeds or fails. The `calibrate()` method delegates all motor and FSoE operations to an internal `MotorControl` instance, manages TPDO data acquisition, and coordinates the calibration loop. Motor runs continuously for the entire session via `motor_spinning()`; data is captured from all encoders simultaneously via EtherCAT TPDOs.
+> **EncodersCalibrator**: Orchestrates calibration across N encoders. The caller must: (1) obtain encoder configs (via `load_encoders_configuration_file()` from JSON or by creating `EncoderRegisterConfig` objects directly), (2) create the calibrator, (3) call `add_encoder(sensor_type, config)` for each sensor to enroll (configs are **required**), (4) call `configure_drive_encoders()` to set up the drive, and (5) call `calibrate()` to run the loop. `configure_drive_encoders()` saves the drive's pre-calibration `FeedbacksConfiguration` (via `MotorControl.get_drive_feedbacks_config()`) before applying the calibration feedback setup; `calibrate()` restores it (via `MotorControl.set_drive_feedbacks_config()`) in its outer `finally` block, whether calibration succeeds or fails. The `calibrate()` method delegates all motor and FSoE operations to an internal `MotorControl` instance, manages TPDO data acquisition, and coordinates the calibration loop. Motor runs continuously for the entire session via `motor_spinning()`; data is captured from all encoders simultaneously via EtherCAT TPDOs.
 >
 > **plotting**: Module-level diagnostic plot functions for raw waveforms, per-iteration residual bar charts, and cumulative residual trend lines. Each figure is saved as PNG.
 
@@ -472,7 +474,7 @@ classDiagram
 ## 4. Design Notes
 
 - **Per-encoder state**: `_SingleEncoderCalibration` manages all per-encoder state (saved configs, residual history, iteration log, convergence flag). `EncodersCalibrator` creates one instance per enrolled encoder and orchestrates them collectively.
-- **Drive feedback restore**: `configure_drive_encoders()` saves the drive's feedback configuration (`DriveFeedbacksConfig`) before switching feedbacks to the internal generator + enrolled encoders. `calibrate()` restores it in its outer `finally` block regardless of success or failure; if it was never saved, a warning is logged and restore is skipped.
+- **Drive feedback restore**: `configure_drive_encoders()` saves the drive's feedback configuration (`FeedbacksConfiguration`, from `ingeniamotion.feedbacks`) before switching feedbacks to the internal generator + enrolled encoders. `calibrate()` restores it in its outer `finally` block regardless of success or failure; if it was never saved, a warning is logged and restore is skipped.
 - **DLL sync**: `set_current_analog_track_adjustments()` is called before every `analyze_raw_data()` to keep the mu_3sl DLL in sync with chip state.
 - **Convergence**: Configurable `max_iterations` (default=10). Stops early when all 8 residuals ≤ 1.0 LSB. Non-converged encoders get `CalibrationResult(success=False)`; converged ones proceed to EEPROM save.
 - **Motor lifecycle**: The motor runs continuously for the entire calibration session via the `motor_spinning()` context manager. It starts once before the iteration loop and stops after finalization.
