@@ -250,8 +250,12 @@ class TestDriveFeedbacksConfig:
         mock_mc.configuration.set_commutation_feedback.assert_called_once_with(
             SensorType.INTGEN, axis=1
         )
-        mock_mc.configuration.set_velocity_feedback.assert_called_once_with(SensorType.INTGEN, axis=1)
-        mock_mc.configuration.set_position_feedback.assert_called_once_with(SensorType.INTGEN, axis=1)
+        mock_mc.configuration.set_velocity_feedback.assert_called_once_with(
+            SensorType.INTGEN, axis=1
+        )
+        mock_mc.configuration.set_position_feedback.assert_called_once_with(
+            SensorType.INTGEN, axis=1
+        )
         mock_mc.configuration.set_auxiliar_feedback.assert_called_once_with(SensorType.ABS1, axis=1)
         mock_mc.configuration.set_reference_feedback.assert_called_once_with(
             SensorType.SSI2, axis=1
