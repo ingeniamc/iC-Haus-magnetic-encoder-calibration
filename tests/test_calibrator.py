@@ -471,7 +471,7 @@ class TestCalibrateRestore:
         _patch_drive(cal._motor, mocker)
         saved_feedbacks = mocker.MagicMock(name="SavedFeedbacks")
         cal._motor.get_drive_feedbacks_config.return_value = saved_feedbacks
-        # Path encoder
+        # Patch encoder
         _patch_encoder(enc, mocker)
         saved_drive = mocker.MagicMock(name="SavedDrive")
         saved_ic = mocker.MagicMock(name="SavedIC")
@@ -500,7 +500,7 @@ class TestCalibrateRestore:
         _patch_drive(cal._motor, mocker)
         saved_feedbacks = mocker.MagicMock(name="SavedFeedbacks")
         cal._motor.get_drive_feedbacks_config.return_value = saved_feedbacks
-        # Path encoder
+        # Patch encoder
         _patch_encoder(enc, mocker)
         saved_drive = mocker.MagicMock(name="SavedDrive")
         saved_ic = mocker.MagicMock(name="SavedIC")
