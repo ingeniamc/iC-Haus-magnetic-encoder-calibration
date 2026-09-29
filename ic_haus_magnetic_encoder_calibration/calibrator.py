@@ -848,7 +848,7 @@ class EncodersCalibrator:
                 self._teardown_data_tpdo()
 
         finally:
-            # -- Resore stage: Restore drive and encoder state --
+            # -- Restore stage: Restore drive and encoder state --
             # Restore drive
             if self._saved_drive_feedbacks_config:
                 self._motor.set_drive_feedbacks_config(self._saved_drive_feedbacks_config)

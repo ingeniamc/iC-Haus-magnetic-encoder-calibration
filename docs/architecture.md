@@ -170,7 +170,7 @@ flowchart TD
     DRVREG["drive_encoder_registers.py<br/>DriveEncoderRegisters dataclass<br/>Drive register name mappings"]
     CFG["config_loader.py<br/>EncoderRegisterConfig dataclass<br/>(register values: OUT_MSB, OUT_LSB,<br/>MODE_ST, ENAC, CFGEW, FILT)<br/>load_encoders_configuration_file()<br/>(optional: reads config/encoders.json)"]
     ENC["encoder.py<br/>Encoder class<br/>Single encoder operations<br/>BiSS R/W, save/restore,<br/>CalibrationResult dataclass"]
-    MOT["motor_control.py<br/>MotorControl class<br/>FSoE lifecycle, motor_spinning(),<br/>configure_encoders() + current ramp"]
+    MOT["motor_control.py<br/>MotorControl class<br/>FSoE lifecycle, motor_spinning(),<br/>configure_drive_feedbacks() + current ramp"]
     CAL["calibrator.py<br/>EncodersCalibrator class<br/>_SingleEncoderCalibration per-encoder state<br/>TPDO data acquisition, diagnostic plots"]
     PLOT["plotting.py<br/>Diagnostic plot functions<br/>raw waveforms, residual bars, trend"]
 

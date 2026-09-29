@@ -225,9 +225,16 @@ class TestDriveFeedbacksConfig:
 
         config = motor.get_drive_feedbacks_config()
 
+        assert config.commutation_feedback == SensorType.INTGEN
+        assert config.velocity_feedback == SensorType.INTGEN
+        assert config.position_feedback == SensorType.INTGEN
         assert config.auxiliar_feedback == SensorType.ABS1
         assert config.reference_feedback == SensorType.SSI2
         mock_mc.configuration.get_commutation_feedback.assert_called_once_with(axis=1)
+        mock_mc.configuration.get_velocity_feedback.assert_called_once_with(axis=1)
+        mock_mc.configuration.get_position_feedback.assert_called_once_with(axis=1)
+        mock_mc.configuration.get_auxiliar_feedback.assert_called_once_with(axis=1)
+        mock_mc.configuration.get_reference_feedback.assert_called_once_with(axis=1)
 
     def test_set_drive_feedbacks_config_writes_all_fields(self, motor, mock_mc) -> None:
         config = DriveFeedbacksConfig(
@@ -240,6 +247,11 @@ class TestDriveFeedbacksConfig:
 
         motor.set_drive_feedbacks_config(config)
 
+        mock_mc.configuration.set_commutation_feedback.assert_called_once_with(
+            SensorType.INTGEN, axis=1
+        )
+        mock_mc.configuration.set_velocity_feedback.assert_called_once_with(SensorType.INTGEN, axis=1)
+        mock_mc.configuration.set_position_feedback.assert_called_once_with(SensorType.INTGEN, axis=1)
         mock_mc.configuration.set_auxiliar_feedback.assert_called_once_with(SensorType.ABS1, axis=1)
         mock_mc.configuration.set_reference_feedback.assert_called_once_with(
             SensorType.SSI2, axis=1
