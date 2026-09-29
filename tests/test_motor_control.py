@@ -240,9 +240,7 @@ class TestDriveFeedbacksConfig:
 
         motor.set_drive_feedbacks_config(config)
 
-        mock_mc.configuration.set_auxiliar_feedback.assert_called_once_with(
-            SensorType.ABS1, axis=1
-        )
+        mock_mc.configuration.set_auxiliar_feedback.assert_called_once_with(SensorType.ABS1, axis=1)
         mock_mc.configuration.set_reference_feedback.assert_called_once_with(
             SensorType.SSI2, axis=1
         )
