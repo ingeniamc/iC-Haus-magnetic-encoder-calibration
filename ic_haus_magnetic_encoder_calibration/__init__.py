@@ -1,6 +1,6 @@
 """iC-Haus Magnetic Encoder Calibration library."""
 
-from .calibrator import EncoderCalibrator
+from .calibrator import EncodersCalibrator
 from .drive_encoder_registers import DriveEncoderRegisters, get_encoder_registers
 from .encoder import (
     CalibrationResult,
@@ -17,7 +17,7 @@ __all__ = [
     "DriveEncoderRegisters",
     "DriveFrameConfig",
     "Encoder",
-    "EncoderCalibrator",
+    "EncodersCalibrator",
     "ICHausRegister",
     "ICHausRegisterField",
     "ICMURegisterState",

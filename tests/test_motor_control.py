@@ -215,6 +215,68 @@ class TestMotorSpinning:
         mock_mc.motion.motor_disable.assert_called_once()
 
 
+class TestDriveFeedbacksConfig:
+    def test_get_drive_feedbacks_config_delegates_to_axis_feedbacks(self, motor, mock_mc) -> None:
+        """Test that get_drive_feedbacks_config delegates to the axis feedbacks."""
+        axis_mock = mock_mc.motion_nodes["default"].get_axis.return_value
+        expected_config = axis_mock.feedbacks.get_configuration.return_value
+
+        config = motor.get_drive_feedbacks_config()
+
+        mock_mc.motion_nodes["default"].get_axis.assert_called_once_with(1)
+        assert config is expected_config
+
+    def test_set_drive_feedbacks_config_delegates_to_axis_feedbacks(self, motor, mock_mc) -> None:
+        """Test that set_drive_feedbacks_config delegates to the axis feedbacks."""
+        axis_mock = mock_mc.motion_nodes["default"].get_axis.return_value
+        target_config = axis_mock.feedbacks.get_configuration.return_value
+
+        motor.set_drive_feedbacks_config(target_config)
+
+        axis_mock.feedbacks.set_configuration.assert_called_once_with(target_config)
+
+    def test_configure_drive_feedbacks_raises_on_empty_list(self, motor) -> None:
+        """Test that configure_drive_feedbacks raises a ValueError when given an empty list."""
+        with pytest.raises(ValueError, match="No encoder sensor types provided"):
+            motor.configure_drive_feedbacks([])
+
+    def test_configure_drive_feedbacks_sets_auxiliary_only(self, motor, mock_mc) -> None:
+        """Single encoder -> auxiliary feedback set, reference feedback defaults to INTGEN."""
+        axis_feedbacks = mock_mc.motion_nodes["default"].get_axis.return_value.feedbacks
+        sensors = {SensorType.INTGEN: "intgen_sensor", SensorType.ABS1: "abs1_sensor"}
+        axis_feedbacks.get_sensor.side_effect = sensors.__getitem__
+
+        motor.configure_drive_feedbacks([SensorType.ABS1])
+
+        axis_feedbacks.update_configuration.assert_called_once_with({
+            axis_feedbacks.commutation: sensors[SensorType.INTGEN],
+            axis_feedbacks.velocity: sensors[SensorType.INTGEN],
+            axis_feedbacks.position: sensors[SensorType.INTGEN],
+            axis_feedbacks.auxiliary: sensors[SensorType.ABS1],
+            axis_feedbacks.reference: sensors[SensorType.INTGEN],
+        })
+
+    def test_configure_drive_feedbacks_sets_both(self, motor, mock_mc) -> None:
+        """Two encoders -> first is auxiliary, second is reference feedback."""
+        axis_feedbacks = mock_mc.motion_nodes["default"].get_axis.return_value.feedbacks
+        sensors = {
+            SensorType.INTGEN: "intgen_sensor",
+            SensorType.ABS1: "abs1_sensor",
+            SensorType.SSI2: "ssi2_sensor",
+        }
+        axis_feedbacks.get_sensor.side_effect = sensors.__getitem__
+
+        motor.configure_drive_feedbacks([SensorType.ABS1, SensorType.SSI2])
+
+        axis_feedbacks.update_configuration.assert_called_once_with({
+            axis_feedbacks.commutation: sensors[SensorType.INTGEN],
+            axis_feedbacks.velocity: sensors[SensorType.INTGEN],
+            axis_feedbacks.position: sensors[SensorType.INTGEN],
+            axis_feedbacks.auxiliary: sensors[SensorType.ABS1],
+            axis_feedbacks.reference: sensors[SensorType.SSI2],
+        })
+
+
 # ---------------------------------------------------------------------------
 #  Hardware integration tests (require a physical drive)
 # ---------------------------------------------------------------------------
@@ -258,8 +320,8 @@ class TestHasFsoeHardware:
 @pytest.mark.usefixtures(hw_encoder.__name__)
 class TestInternalGeneratorHardware:
     def test_start_and_stop_with_generator(self, hw_motor) -> None:
-        hw_motor.configure_encoders(
-            encoder_sensor_types=[],
+        hw_motor.configure_drive_feedbacks(
+            encoder_sensor_types=[SensorType.ABS1],
         )
         if hw_motor.has_fsoe:
             assert not hw_motor._fsoe_prepared

@@ -10,6 +10,8 @@ readme = "README.md"
 requires-python = ">=3.9,<3.13"
 dependencies = [
     "ingeniamotion[fsoe]>=0.10.2",
+    "ingenialink==7.6.2.post414+pr.930.b2",
+    "virtual_drive==0.1.1.post261+develop.7854ff4",
     "matplotlib>=3.9",
     "mu-3sl==3.4.5.1",
     "numpy>=2.0",
@@ -130,8 +132,7 @@ cmd = "mypy ic_haus_magnetic_encoder_calibration"
 # ---------------------------- Install Novanta-only test dependencies -----------------------------
 [tool.poe.tasks.install-test-deps]
 help = "Install the Novanta-only test framework (requires Novanta network)"
-cmd = "pip install summit-testing-framework==0.3.0 --index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com"
-# ----------------------------- Run unit tests -----------------------------
+cmd = "pip install summit-testing-framework==0.3.1.post513+develop.e3e789a --index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com"# ----------------------------- Run unit tests -----------------------------
 [tool.poe.tasks.tests]
 cmd = "python -I -m pytest tests -m \"not hardware\""
 

@@ -1,6 +1,6 @@
 """Orchestrates calibration across one or more iC-MU encoders.
 
-``EncoderCalibrator`` owns the motor movement logic and coordinates the
+``EncodersCalibrator`` owns the motor movement logic and coordinates the
 per-encoder calibration loop.  A single motor spin captures raw data from
 all enrolled encoders simultaneously; each encoder's analog calibration
 then proceeds independently.
@@ -18,12 +18,15 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import mu_3sl_interface as mu_3sl
 from ingenialink.pdo import RPDOMap, RPDOMapItem, TPDOMap
 from ingeniamotion import MotionController
 from ingeniamotion.enums import SensorType
+
+if TYPE_CHECKING:
+    from ingeniamotion.feedbacks import FeedbacksConfiguration
 
 from ic_haus_magnetic_encoder_calibration.config_loader import (
     EncoderRegisterConfig,
@@ -506,7 +509,7 @@ class _SingleEncoderCalibration:
         )
 
 
-class EncoderCalibrator:
+class EncodersCalibrator:
     """Orchestrates calibration for one or more iC-MU encoders.
 
     Data acquisition uses a TPDO map registered alongside the FSoE
@@ -556,6 +559,7 @@ class EncoderCalibrator:
             mc, axis=axis, gen_frequency=gen_frequency, gen_current=gen_current
         )
         self._encoders: list[Encoder] = []
+        self._saved_drive_feedbacks_config: Optional[FeedbacksConfiguration] = None
         self._output_dir = output_dir or Path("calibration_output")
         self._save_raw_plots = save_raw_plots
         self._save_residual_bar_plots = save_residual_bar_plots
@@ -605,9 +609,17 @@ class EncoderCalibrator:
     # -- Motor control --
 
     def configure_drive_encoders(self) -> None:
-        """Configure the drive for internal generator mode with enrolled encoders."""
+        """Configure the drive for internal generator mode with enrolled encoders.
+
+        Saves the current drive feedback configuration
+        and applies new settings based on the enrolled encoders.
+
+        """
+        # Save the current drive encoder configuration before applying new settings
+        self._saved_drive_feedbacks_config = self._motor.get_drive_feedbacks_config()
+        # Apply the new drive encoder configuration based on the enrolled encoders
         sensor_types = [enc.sensor_type for enc in self._encoders]
-        self._motor.configure_encoders(sensor_types)
+        self._motor.configure_drive_feedbacks(sensor_types)
 
     # -- PDO data acquisition --
 
@@ -739,7 +751,7 @@ class EncoderCalibrator:
         4. Activate PDOs (FSoE + data start together).
         5. Start motor, run iterative calibration loop.
         6. Finalize converged encoders (nonius + EEPROM).
-        7. Stop motor, stop PDOs/FSoE, restore encoder state.
+        7. Stop motor, stop PDOs/FSoE, restore drive state.
 
         Returns:
             Mapping of encoder number to CalibrationResult.
@@ -839,5 +851,12 @@ class EncoderCalibrator:
                 self._teardown_data_tpdo()
 
         finally:
+            # -- Restore stage: Restore drive and encoder state --
+            # Restore drive
+            if self._saved_drive_feedbacks_config:
+                self._motor.set_drive_feedbacks_config(self._saved_drive_feedbacks_config)
+            else:
+                logger.warning("Drive feedback configuration was not saved, could not be restored.")
+            # Restore encoders
             for enc in encoders:
                 enc.restore_state()

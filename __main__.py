@@ -11,7 +11,7 @@ from ingeniamotion.enums import SensorType
 from ic_haus_magnetic_encoder_calibration.calibrator import (
     DEFAULT_CAPTURE_DURATION_S,
     DEFAULT_PDO_RATE_S,
-    EncoderCalibrator,
+    EncodersCalibrator,
 )
 from ic_haus_magnetic_encoder_calibration.config_loader import load_encoders_configuration_file
 from ic_haus_magnetic_encoder_calibration.motor_control import (
@@ -227,7 +227,7 @@ def main() -> None:
         mc.configuration.load_configuration(str(args.drive_config))
         logger.info(f"Loaded configuration: {args.drive_config}")
 
-    calibrator = EncoderCalibrator(
+    calibrator = EncodersCalibrator(
         mc,
         axis=args.axis,
         max_iterations=args.max_iterations,
