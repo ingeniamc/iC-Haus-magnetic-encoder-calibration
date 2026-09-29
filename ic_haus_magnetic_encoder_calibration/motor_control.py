@@ -13,12 +13,15 @@ import math
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
-from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ingeniamotion import MotionController
 from ingeniamotion.enums import OperationMode, SensorType
-from ingeniamotion.fsoe_master.handler import FSoEMasterHandler  # noqa: TC002
+from ingeniamotion.feedbacks import FeedbacksConfiguration
+
+if TYPE_CHECKING:
+    from ingeniamotion.fsoe_master.handler import FSoEMasterHandler
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,17 +37,6 @@ _CURRENT_RAMP_INTERVAL = 0.2  # seconds between current ramp steps
 _FREQUENCY_RAMP_INTERVAL = 0.8  # seconds between frequency ramp steps
 _PDO_WATCHDOG_TIMEOUT = 6.0  # seconds — generous to tolerate GIL blocking (matplotlib, etc.)
 _MIN_FREQ_STEP = 1.0  # Hz - starting frequency for the ramp (upper bound)
-
-
-@dataclass(frozen=True)
-class DriveFeedbacksConfig:
-    """Drive feedbacks configuration."""
-
-    commutation_feedback: SensorType
-    velocity_feedback: SensorType
-    position_feedback: SensorType
-    auxiliar_feedback: SensorType
-    reference_feedback: SensorType
 
 
 class MotorControl:
@@ -220,36 +212,26 @@ class MotorControl:
 
     # -- Motor control --
 
-    def get_drive_feedbacks_config(self) -> DriveFeedbacksConfig:
+    def get_drive_feedbacks_config(self) -> FeedbacksConfiguration:
         """Get the current drive feedbacks configuration.
 
         Returns:
-            DriveFeedbacksConfig: The current drive feedbacks configuration.
+            The current drive feedbacks configuration.
         """
-        return DriveFeedbacksConfig(
-            commutation_feedback=self._mc.configuration.get_commutation_feedback(axis=self._axis),
-            velocity_feedback=self._mc.configuration.get_velocity_feedback(axis=self._axis),
-            position_feedback=self._mc.configuration.get_position_feedback(axis=self._axis),
-            auxiliar_feedback=self._mc.configuration.get_auxiliar_feedback(axis=self._axis),
-            reference_feedback=self._mc.configuration.get_reference_feedback(axis=self._axis),
-        )
+        axis_feedbacks = self._mc.motion_nodes["default"].get_axis(self._axis).feedbacks
+        return axis_feedbacks.get_configuration()
 
     def set_drive_feedbacks_config(
         self,
-        config: DriveFeedbacksConfig,
+        config: FeedbacksConfiguration,
     ) -> None:
         """Set the drive feedbacks configuration.
 
         Args:
             config: The new drive feedbacks configuration to apply.
         """
-        self._mc.configuration.set_commutation_feedback(
-            config.commutation_feedback, axis=self._axis
-        )
-        self._mc.configuration.set_velocity_feedback(config.velocity_feedback, axis=self._axis)
-        self._mc.configuration.set_position_feedback(config.position_feedback, axis=self._axis)
-        self._mc.configuration.set_auxiliar_feedback(config.auxiliar_feedback, axis=self._axis)
-        self._mc.configuration.set_reference_feedback(config.reference_feedback, axis=self._axis)
+        axis_feedbacks = self._mc.motion_nodes["default"].get_axis(self._axis).feedbacks
+        axis_feedbacks.set_configuration(config)
 
     def configure_drive_feedbacks(
         self,
@@ -272,19 +254,19 @@ class MotorControl:
         """
         if not encoder_sensor_types:
             raise ValueError("No encoder sensor types provided. Cannot set drive feedbacks.")
-        calibration_config = DriveFeedbacksConfig(
-            commutation_feedback=SensorType.INTGEN,
-            velocity_feedback=SensorType.INTGEN,
-            position_feedback=SensorType.INTGEN,
-            auxiliar_feedback=encoder_sensor_types[
-                0
-            ],  # Set the first encoder as auxiliary feedback
-            reference_feedback=encoder_sensor_types[1]
+        axis_feedbacks = self._mc.motion_nodes["default"].get_axis(self._axis).feedbacks
+        internal_generator = axis_feedbacks.get_sensor(SensorType.INTGEN)
+        axis_feedbacks.update_configuration({
+            axis_feedbacks.commutation: internal_generator,
+            axis_feedbacks.velocity: internal_generator,
+            axis_feedbacks.position: internal_generator,
+            axis_feedbacks.auxiliary: axis_feedbacks.get_sensor(
+                encoder_sensor_types[0]
+            ),  # Set the first encoder as auxiliary feedback
+            axis_feedbacks.reference: axis_feedbacks.get_sensor(encoder_sensor_types[1])
             if len(encoder_sensor_types) > 1
-            else SensorType.INTGEN,  # Set the second encoder as reference feedback if available
-        )
-
-        self.set_drive_feedbacks_config(calibration_config)
+            else internal_generator,  # Set the second encoder as reference feedback if available
+        })
         logger.info("Encoder feedback configured.")
 
     def _start_motor(self) -> None:

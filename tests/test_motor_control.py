@@ -6,7 +6,7 @@ from ingeniamotion.enums import SensorType
 from ic_haus_magnetic_encoder_calibration.config_loader import EncoderRegisterConfig
 from ic_haus_magnetic_encoder_calibration.encoder import Encoder
 from ic_haus_magnetic_encoder_calibration.ic_haus_registers import CFGEW
-from ic_haus_magnetic_encoder_calibration.motor_control import DriveFeedbacksConfig, MotorControl
+from ic_haus_magnetic_encoder_calibration.motor_control import MotorControl
 
 
 @pytest.fixture
@@ -216,68 +216,65 @@ class TestMotorSpinning:
 
 
 class TestDriveFeedbacksConfig:
-    def test_get_drive_feedbacks_config_reads_all_fields(self, motor, mock_mc) -> None:
-        mock_mc.configuration.get_commutation_feedback.return_value = SensorType.INTGEN
-        mock_mc.configuration.get_velocity_feedback.return_value = SensorType.INTGEN
-        mock_mc.configuration.get_position_feedback.return_value = SensorType.INTGEN
-        mock_mc.configuration.get_auxiliar_feedback.return_value = SensorType.ABS1
-        mock_mc.configuration.get_reference_feedback.return_value = SensorType.SSI2
+    def test_get_drive_feedbacks_config_delegates_to_axis_feedbacks(self, motor, mock_mc) -> None:
+        """Test that get_drive_feedbacks_config delegates to the axis feedbacks."""
+        axis_mock = mock_mc.motion_nodes["default"].get_axis.return_value
+        expected_config = axis_mock.feedbacks.get_configuration.return_value
 
         config = motor.get_drive_feedbacks_config()
 
-        assert config.commutation_feedback == SensorType.INTGEN
-        assert config.velocity_feedback == SensorType.INTGEN
-        assert config.position_feedback == SensorType.INTGEN
-        assert config.auxiliar_feedback == SensorType.ABS1
-        assert config.reference_feedback == SensorType.SSI2
-        mock_mc.configuration.get_commutation_feedback.assert_called_once_with(axis=1)
-        mock_mc.configuration.get_velocity_feedback.assert_called_once_with(axis=1)
-        mock_mc.configuration.get_position_feedback.assert_called_once_with(axis=1)
-        mock_mc.configuration.get_auxiliar_feedback.assert_called_once_with(axis=1)
-        mock_mc.configuration.get_reference_feedback.assert_called_once_with(axis=1)
+        mock_mc.motion_nodes["default"].get_axis.assert_called_once_with(1)
+        assert config is expected_config
 
-    def test_set_drive_feedbacks_config_writes_all_fields(self, motor, mock_mc) -> None:
-        config = DriveFeedbacksConfig(
-            commutation_feedback=SensorType.INTGEN,
-            velocity_feedback=SensorType.INTGEN,
-            position_feedback=SensorType.INTGEN,
-            auxiliar_feedback=SensorType.ABS1,
-            reference_feedback=SensorType.SSI2,
-        )
+    def test_set_drive_feedbacks_config_delegates_to_axis_feedbacks(self, motor, mock_mc) -> None:
+        """Test that set_drive_feedbacks_config delegates to the axis feedbacks."""
+        axis_mock = mock_mc.motion_nodes["default"].get_axis.return_value
+        target_config = axis_mock.feedbacks.get_configuration.return_value
 
-        motor.set_drive_feedbacks_config(config)
+        motor.set_drive_feedbacks_config(target_config)
 
-        mock_mc.configuration.set_commutation_feedback.assert_called_once_with(
-            SensorType.INTGEN, axis=1
-        )
-        mock_mc.configuration.set_velocity_feedback.assert_called_once_with(
-            SensorType.INTGEN, axis=1
-        )
-        mock_mc.configuration.set_position_feedback.assert_called_once_with(
-            SensorType.INTGEN, axis=1
-        )
-        mock_mc.configuration.set_auxiliar_feedback.assert_called_once_with(SensorType.ABS1, axis=1)
-        mock_mc.configuration.set_reference_feedback.assert_called_once_with(
-            SensorType.SSI2, axis=1
-        )
+        axis_mock.feedbacks.set_configuration.assert_called_once_with(target_config)
 
     def test_configure_drive_feedbacks_raises_on_empty_list(self, motor) -> None:
+        """Test that configure_drive_feedbacks raises a ValueError when given an empty list."""
         with pytest.raises(ValueError, match="No encoder sensor types provided"):
             motor.configure_drive_feedbacks([])
 
     def test_configure_drive_feedbacks_sets_auxiliary_only(self, motor, mock_mc) -> None:
         """Single encoder -> auxiliary feedback set, reference feedback defaults to INTGEN."""
+        axis_feedbacks = mock_mc.motion_nodes["default"].get_axis.return_value.feedbacks
+        sensors = {SensorType.INTGEN: "intgen_sensor", SensorType.ABS1: "abs1_sensor"}
+        axis_feedbacks.get_sensor.side_effect = sensors.__getitem__
+
         motor.configure_drive_feedbacks([SensorType.ABS1])
 
-        mock_mc.configuration.set_auxiliar_feedback.assert_called_with(SensorType.ABS1, axis=1)
-        mock_mc.configuration.set_reference_feedback.assert_called_with(SensorType.INTGEN, axis=1)
+        axis_feedbacks.update_configuration.assert_called_once_with({
+            axis_feedbacks.commutation: sensors[SensorType.INTGEN],
+            axis_feedbacks.velocity: sensors[SensorType.INTGEN],
+            axis_feedbacks.position: sensors[SensorType.INTGEN],
+            axis_feedbacks.auxiliary: sensors[SensorType.ABS1],
+            axis_feedbacks.reference: sensors[SensorType.INTGEN],
+        })
 
     def test_configure_drive_feedbacks_sets_both(self, motor, mock_mc) -> None:
         """Two encoders -> first is auxiliary, second is reference feedback."""
+        axis_feedbacks = mock_mc.motion_nodes["default"].get_axis.return_value.feedbacks
+        sensors = {
+            SensorType.INTGEN: "intgen_sensor",
+            SensorType.ABS1: "abs1_sensor",
+            SensorType.SSI2: "ssi2_sensor",
+        }
+        axis_feedbacks.get_sensor.side_effect = sensors.__getitem__
+
         motor.configure_drive_feedbacks([SensorType.ABS1, SensorType.SSI2])
 
-        mock_mc.configuration.set_auxiliar_feedback.assert_called_with(SensorType.ABS1, axis=1)
-        mock_mc.configuration.set_reference_feedback.assert_called_with(SensorType.SSI2, axis=1)
+        axis_feedbacks.update_configuration.assert_called_once_with({
+            axis_feedbacks.commutation: sensors[SensorType.INTGEN],
+            axis_feedbacks.velocity: sensors[SensorType.INTGEN],
+            axis_feedbacks.position: sensors[SensorType.INTGEN],
+            axis_feedbacks.auxiliary: sensors[SensorType.ABS1],
+            axis_feedbacks.reference: sensors[SensorType.SSI2],
+        })
 
 
 # ---------------------------------------------------------------------------
