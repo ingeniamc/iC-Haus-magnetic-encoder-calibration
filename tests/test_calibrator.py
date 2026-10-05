@@ -241,12 +241,10 @@ class TestCalibrateSetup:
     """Config is saved and applied on setup."""
 
     def test_applies_config_before_calibration(
-        self, mock_mc, mocker, mu_3sl_mock, tmp_path, mock_encoder_config
+        self, mocker, mu_3sl_mock, mock_encoder_config, calibrator
     ) -> None:
         """apply_config() is called during save_state (before calibration loop)."""
-        cal = EncodersCalibrator(
-            mock_mc, axis=1, max_iterations=3, output_dir=tmp_path, save_nonius_track=False
-        )
+        cal = calibrator
         enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
         _patch_encoder(enc, mocker)
         mocker.patch.object(enc, "apply_config")
