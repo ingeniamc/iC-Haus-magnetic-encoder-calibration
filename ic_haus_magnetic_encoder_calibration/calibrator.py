@@ -548,7 +548,7 @@ class EncodersCalibrator:
         save_residual_bar_plots: bool = False,
         save_trend_plot: bool = True,
         save_json: bool = True,
-        save_nonius_track: bool = False,
+        save_nonius_track: bool = True,
     ) -> None:
         self._mc = mc
         self._axis = axis

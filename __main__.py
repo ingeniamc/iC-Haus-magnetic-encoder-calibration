@@ -171,9 +171,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--save-nonius-track",
         type=_parse_bool,
-        default=False,
+        default=True,
         metavar="BOOL",
-        help="Save nonius track plots (default: false)",
+        help="Save nonius track plots (default: true)",
     )
     parser.add_argument(
         "--drive-config",
