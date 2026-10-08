@@ -18,7 +18,6 @@ Each figure is saved as a PNG.
 import logging
 import math
 import os
-import shutil
 import tempfile
 from pathlib import Path
 
@@ -44,55 +43,21 @@ _RESIDUAL_LABELS = [
     "N ph",
 ]
 
-# Directory name for storing previous run's outputs
-PREVIOUS_RUN_DIR_NAME = "previous_run"
 
-
-def ensure_output_dir_writable(output_dir: Path) -> None:
-    """Check whether the current user has write permission for the directory.
-
-    Args:
-        output_dir: Directory to check.
+def create_output_dir_writable(output_dir: Path) -> None:
+    """Create the output directory if needed and check it is writable.
 
     Raises:
-        SystemExit: If the directory is not writable.
-    """
-    if not os.access(output_dir, os.W_OK):
-        raise SystemExit(f"Output directory '{output_dir}' is not writable. ")
-
-
-def prepare_output_dir(output_dir: Path) -> None:
-    """Create and validate the output directory, archiving its prior contents.
-
-    Args:
-        output_dir: Directory where this calibration will write output.
-
-    Raises:
-        SystemExit: If the directory cannot be created or written to.
+        SystemExit: If the directory cannot be created or is not writable.
     """
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
-        ensure_output_dir_writable(output_dir)
-
-        # Checks for existing files
-        existing_entries = [
-            entry for entry in output_dir.iterdir() if entry.name != PREVIOUS_RUN_DIR_NAME
-        ]
-        # Archives the existing files into a child folder
-        if existing_entries:
-            # Creates child folder
-            previous_run_dir = output_dir / PREVIOUS_RUN_DIR_NAME
-            if previous_run_dir.exists():
-                shutil.rmtree(previous_run_dir)
-            previous_run_dir.mkdir()
-            # Moves existing entries into the child folder
-            for entry in existing_entries:
-                shutil.move(str(entry), str(previous_run_dir / entry.name))
-            logger.info(f"Archived previous calibration output to {previous_run_dir}")
-
     except OSError as exc:
-        logger.error(f"Cannot save calibration outputs to '{output_dir}': {exc}.")
-        raise SystemExit(f"Cannot save calibration outputs to '{output_dir}': {exc}.") from exc
+        raise SystemExit(f"Cannot create output directory '{output_dir}': {exc}") from exc
+    if not os.access(output_dir, os.W_OK):
+        raise SystemExit(
+            f"Output directory '{output_dir}' is not writable. Choose another directory."
+        )
 
 
 def _save_figure(fig: Figure, path: Path) -> None:
@@ -103,11 +68,8 @@ def _save_figure(fig: Figure, path: Path) -> None:
         path: Path to save the figure to.
 
     """
-    try:
-        fig.savefig(path, dpi=150, bbox_inches="tight")
-        logger.info(f"Saved plot: {path}")
-    except Exception as e:
-        logger.error(f"Failed to save plot {path}: {e}")
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    logger.info(f"Saved plot: {path}")
 
 
 def _ensure_backend() -> None:

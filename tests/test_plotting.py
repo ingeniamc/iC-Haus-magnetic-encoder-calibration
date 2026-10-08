@@ -1,14 +1,12 @@
 import pytest
 
 from ic_haus_magnetic_encoder_calibration.plotting import (
-    PREVIOUS_RUN_DIR_NAME,
     RESIDUAL_THRESHOLD,
     _plot_nonius_track_offset_table,
     _plot_raw_waveforms,
     _plot_residuals_bar,
     _plot_residuals_trend,
-    ensure_output_dir_writable,
-    prepare_output_dir,
+    create_output_dir_writable,
     warm_matplotlib_cache,
 )
 
@@ -26,71 +24,15 @@ class TestOutputDir:
         )
 
         with pytest.raises(SystemExit, match="is not writable."):
-            ensure_output_dir_writable(output_dir)
+            create_output_dir_writable(output_dir)
 
     def test_creates_missing_output_directory(self, tmp_path) -> None:
-        """Test that the output directory is created if it does not exist."""
+        """Test that the output directory is created if it does or not exist."""
         output_dir = tmp_path / "calibration_output"
-        prepare_output_dir(output_dir)
+        create_output_dir_writable(output_dir)
 
         # Check that the output directory was created
         assert output_dir.is_dir()
-        # Check that no archived-data-folder was created
-        assert not (output_dir / PREVIOUS_RUN_DIR_NAME).exists()
-
-    def test_archives_existing_contents(self, tmp_path) -> None:
-        """Test that existing contents are archived.
-
-        Files from a previous run exist on the folder, but no archived files folder exists.
-
-        """
-        # Create initial output directory with contents but no archived data nor folder
-        output_dir = tmp_path / "calibration_output"
-        output_dir.mkdir()
-        (output_dir / "old_result.json").write_text("old", encoding="utf-8")
-
-        # Run the function to prepare the output directory
-        prepare_output_dir(output_dir)
-
-        # Check that the previous run contents have been moved correctly
-        previous_run_dir = output_dir / PREVIOUS_RUN_DIR_NAME
-        assert not (output_dir / "old_result.json").exists()
-        assert (previous_run_dir / "old_result.json").read_text(encoding="utf-8") == "old"
-
-    def test_prior_archived_files_get_overwritten(self, tmp_path) -> None:
-        """Test that existing contents are archived.
-
-        Files from a previous run exist on the folder AND the archived files folder exists.
-
-        """
-        # Create initial output directory with contents
-        output_dir = tmp_path / "calibration_output"
-        output_dir.mkdir()
-        (output_dir / "old_result.json").write_text("old", encoding="utf-8")
-        # Create archived data folder with files
-        previous_run_dir = output_dir / PREVIOUS_RUN_DIR_NAME
-        previous_run_dir.mkdir()
-        (previous_run_dir / "stale_result.json").write_text("stale", encoding="utf-8")
-
-        # Run the function to prepare the output directory
-        prepare_output_dir(output_dir)
-
-        # Check that the previous run contents have been moved correctly and no old files remain
-        assert not (output_dir / "old_result.json").exists()
-        assert (previous_run_dir / "old_result.json").read_text(encoding="utf-8") == "old"
-        assert not (previous_run_dir / "stale_result.json").exists()
-
-    def test_raises_clear_error_when_prepare_output_dir_fails(self, tmp_path, monkeypatch) -> None:
-        """Test that a clear error is raised when the output directory preparation fails."""
-        output_dir = tmp_path / "calibration_output"
-        output_dir.mkdir()
-        monkeypatch.setattr(
-            "ic_haus_magnetic_encoder_calibration.plotting.os.access",
-            lambda *_: False,
-        )
-
-        with pytest.raises(SystemExit, match="is not writable."):
-            prepare_output_dir(output_dir)
 
 
 class TestPlotRawWaveforms:

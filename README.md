@@ -142,8 +142,6 @@ and JSON data for each encoder:
 - The Nonius curve plot (generated once, after finalizing the SPO table) shows the master-to-nonius phase error, both per single revolution and continuously across the full capture.
 - The JSON file logs the raw ADC samples, analog adjustments, and residuals for each iteration, plus the final nonius phase margin and InRange % after finalization.
 
-If `calibration_output/` already contains results from a previous calibration, these are moved to `calibration_output/previous_run/` before the new run starts. Any earlier contents of `previous_run/` are deleted, so only the most recent previous run is kept.
-
 ![Output plots example](plots_example.png)
 
 ## Running tests - dev ONLY - Requires Novanta network

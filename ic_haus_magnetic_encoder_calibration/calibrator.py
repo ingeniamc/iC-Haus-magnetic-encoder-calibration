@@ -12,9 +12,12 @@ PDO exchange thread as the FSoE safety protocol.
 
 import json
 import logging
+import shutil
 import threading
 import time
 from collections import deque
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -26,6 +29,7 @@ from ingeniamotion.enums import SensorType
 
 if TYPE_CHECKING:
     from ingeniamotion.feedbacks import FeedbacksConfiguration
+
 
 from ic_haus_magnetic_encoder_calibration.config_loader import (
     EncoderRegisterConfig,
@@ -45,7 +49,6 @@ from .plotting import (
     _plot_raw_waveforms,
     _plot_residuals_bar,
     _plot_residuals_trend,
-    prepare_output_dir,
     warm_matplotlib_cache,
 )
 
@@ -143,6 +146,14 @@ class _SingleEncoderCalibration:
             msg = "Calibration not initialized. Call save_state() first."
             raise RuntimeError(msg)
         return self._cal
+
+    @contextmanager
+    def _saving_file(self) -> Generator[None, None, None]:
+        """Context manager for handling file-saving errors."""
+        try:
+            yield
+        except OSError as exc:
+            logger.error(f"Failed to save output: {exc}", exc_info=exc)
 
     # -- Setup phases --
 
@@ -345,26 +356,29 @@ class _SingleEncoderCalibration:
 
         # -- Diagnostics: plots --
         if save_raw_plots:
-            _plot_raw_waveforms(
-                master_raw,
-                nonius_raw,
-                encoder=self.number,
-                iteration=iteration,
-                output_dir=output_dir,
-            )
+            with self._saving_file():
+                _plot_raw_waveforms(
+                    master_raw,
+                    nonius_raw,
+                    encoder=self.number,
+                    iteration=iteration,
+                    output_dir=output_dir,
+                )
         if save_residual_bar_plots:
-            _plot_residuals_bar(
-                residuals,
-                encoder=self.number,
-                iteration=iteration,
-                output_dir=output_dir,
-            )
+            with self._saving_file():
+                _plot_residuals_bar(
+                    residuals,
+                    encoder=self.number,
+                    iteration=iteration,
+                    output_dir=output_dir,
+                )
         if save_trend_plot:
-            _plot_residuals_trend(
-                {self.number: self.residual_history},
-                encoder=self.number,
-                output_dir=output_dir,
-            )
+            with self._saving_file():
+                _plot_residuals_trend(
+                    {self.number: self.residual_history},
+                    encoder=self.number,
+                    output_dir=output_dir,
+                )
 
         # -- Convergence check / apply corrections --
         self.last_analyze_result = analyze_result
@@ -414,16 +428,12 @@ class _SingleEncoderCalibration:
 
     def export_iteration_data(self, output_dir: Path) -> None:
         """Export iteration log as JSON."""
-        try:
-            if self.iteration_log:
-                json_path = output_dir / f"enc{self.number}_calibration_data.json"
-                json_path.write_text(
-                    json.dumps(self.iteration_log, indent=2),
-                    encoding="utf-8",
-                )
-                logger.info(f"Exported calibration data: {json_path}")
-        except Exception as e:
-            logger.error(f"Failed to export calibration data: {e}")
+        if not self.iteration_log:
+            return
+        json_path = output_dir / f"enc{self.number}_calibration_data.json"
+        with self._saving_file():
+            json_path.write_text(json.dumps(self.iteration_log, indent=2), encoding="utf-8")
+            logger.info(f"Exported calibration data: {json_path}")
 
     def finalize(
         self,
@@ -485,16 +495,17 @@ class _SingleEncoderCalibration:
             continuous_single_turn_position = analyze_result.nonius_position(
                 mu_3sl.Unit.DEGREE, True
             )
-            _plot_nonius_track_offset_table(
-                encoder=enc.number,
-                phase_error=phase_error,
-                track_offset_curve=track_offset_curve,
-                phase_margin=phase_margin,
-                single_turn_position=single_turn_position,
-                continuous_single_turn_position=continuous_single_turn_position,
-                nonius_phase_range_limit=nonius_in_range.range_limit,
-                output_dir=output_dir,
-            )
+            with self._saving_file():
+                _plot_nonius_track_offset_table(
+                    encoder=enc.number,
+                    phase_error=phase_error,
+                    track_offset_curve=track_offset_curve,
+                    phase_margin=phase_margin,
+                    single_turn_position=single_turn_position,
+                    continuous_single_turn_position=continuous_single_turn_position,
+                    nonius_phase_range_limit=nonius_in_range.range_limit,
+                    output_dir=output_dir,
+                )
 
         # Get final analog adjustments and InRange values for the result.
         final_master = cal.analog_master_track_adjustments()
@@ -784,11 +795,13 @@ class EncodersCalibrator:
 
         encoders = [_SingleEncoderCalibration(enc) for enc in self._encoders]
 
-        # -- Prepare output directory before changing encoder state --
-        if self.writes_output:
-            prepare_output_dir(self._output_dir)
-
         try:
+            # Output directory preparation
+            if self.writes_output:
+                if self._output_dir.exists():
+                    shutil.rmtree(self._output_dir)
+                self._output_dir.mkdir(parents=True, exist_ok=True)
+
             # -- Setup phase 1: save state --
             for enc in encoders:
                 enc.save_state()
@@ -862,12 +875,13 @@ class EncodersCalibrator:
                 return results
 
             finally:
-                if self._save_json:
-                    for enc in encoders:
-                        enc.export_iteration_data(self._output_dir)
                 # Stop PDOs first (returns slave to pre-op), then remove maps.
                 self._motor.stop_pdos_and_fsoe()
                 self._teardown_data_tpdo()
+                # Export data to JSON if requested
+                if self._save_json:
+                    for enc in encoders:
+                        enc.export_iteration_data(self._output_dir)
 
         finally:
             # -- Restore stage: Restore drive and encoder state --

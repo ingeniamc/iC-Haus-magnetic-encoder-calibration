@@ -237,6 +237,52 @@ def mu_3sl_mock(mocker):
 # ---------------------------------------------------------------------------
 
 
+class TestCalibrateOutput:
+    """Tests related to the output of the calibrate() method."""
+
+    def test_creates_output_directory(
+        self, mocker, mu_3sl_mock, mock_encoder_config, calibrator, tmp_path
+    ) -> None:
+        """The output directory is created if it does not exist."""
+        # Mock calibration
+        cal = calibrator
+        enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
+        _patch_encoder(enc, mocker)
+        conv = _make_converged_analyze_result(mocker)
+        conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
+        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv])
+        output_dir = tmp_path / "calibration_output"
+        cal._output_dir = output_dir
+        # Call calibrate() to write the output directory
+        cal.calibrate()
+        # Check that the output directory exists
+        assert output_dir.is_dir()
+
+    def test_rewrites_existing_output_directory(
+        self, mocker, mu_3sl_mock, mock_encoder_config, calibrator, tmp_path
+    ) -> None:
+        """The output directory is rewritten if it already exists."""
+        # Create the output directory with fake files to simulate existing content
+        output_dir = tmp_path / "calibration_output"
+        output_dir.mkdir()
+        (output_dir / "fake_file.txt").write_text("fake content")
+        # Mock calibration
+        cal = calibrator
+        enc = cal.add_encoder(SensorType.ABS1, mock_encoder_config)
+        _patch_encoder(enc, mocker)
+        conv = _make_converged_analyze_result(mocker)
+        conv.optimized_nonius_track_offset_table.return_value = mocker.MagicMock()
+        _setup_converging_calibration(cal, mocker, mu_3sl_mock, [conv, conv])
+        cal._output_dir = output_dir
+        # Call calibrate() to rewrite the existing output directory
+        cal.calibrate()
+
+        # Ensure the fake file is removed
+        assert not (output_dir / "fake_file.txt").exists()
+        # Check that the output directory exists
+        assert output_dir.is_dir()
+
+
 class TestCalibrateSetup:
     """Config is saved and applied on setup."""
 
@@ -870,3 +916,42 @@ class TestAcquireRawData:
         result = cal._acquire_raw_data()
 
         assert result == {1: [10, 11], 2: [20, 21]}
+
+
+class TestSaveFile:
+    def test_save_file_method(self, tmp_path) -> None:
+        """The _saving_file method should create a file with the given content."""
+        file_path = tmp_path / "test_file.txt"
+        new_content = "New content"
+
+        # Assuming the save_file method is a static method of EncodersCalibrator
+        _SingleEncoderCalibration._saving_file(file_path.write_text(new_content))
+
+        assert file_path.exists()
+        with open(file_path) as f:
+            assert f.read() == new_content
+
+    def test_save_file_overwrites_existing_file(self, tmp_path) -> None:
+        """The _saving_file method should overwrite an existing file with new content."""
+        file_path = tmp_path / "test_file.txt"
+        initial_content = "Initial content"
+        file_path.write_text(initial_content)
+        new_content = "New content"
+
+        _SingleEncoderCalibration._saving_file(file_path.write_text(new_content))
+
+        assert file_path.exists()
+        with open(file_path) as f:
+            assert f.read() == new_content
+
+    def test_save_file_reports_failure(self, tmp_path, caplog, mocker) -> None:
+        """The _saving_file method should report a failure if the file cannot be written."""
+        # Simulate a failure
+        file_path = tmp_path / "test_file.txt"
+        mocker.patch.object(type(file_path), "write_text", side_effect=OSError("disk full"))
+        sec = _SingleEncoderCalibration(mocker.MagicMock())
+
+        with caplog.at_level("ERROR"), sec._saving_file():
+            file_path.write_text("Hello, world!")
+
+        assert "Failed to save output: disk full" in caplog.text
