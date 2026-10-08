@@ -6,33 +6,54 @@ from ic_haus_magnetic_encoder_calibration.plotting import (
     _plot_raw_waveforms,
     _plot_residuals_bar,
     _plot_residuals_trend,
-    create_output_dir_writable,
+    prepare_output_dir,
     warm_matplotlib_cache,
 )
 
 
 class TestOutputDir:
-    def test_raises_clear_error_when_os_reports_directory_not_writable(
-        self, tmp_path, monkeypatch
-    ) -> None:
-        """Test that a clear error is raised when the output directory is not writable."""
+    def test_creates_missing_directory(self, tmp_path) -> None:
+        """Test that the output directory is created if it does not exist."""
         output_dir = tmp_path / "calibration_output"
-        output_dir.mkdir()
-        monkeypatch.setattr(
-            "ic_haus_magnetic_encoder_calibration.plotting.os.access",
-            lambda *_: False,
-        )
-
-        with pytest.raises(SystemExit, match="is not writable."):
-            create_output_dir_writable(output_dir)
-
-    def test_creates_missing_output_directory(self, tmp_path) -> None:
-        """Test that the output directory is created if it does or not exist."""
-        output_dir = tmp_path / "calibration_output"
-        create_output_dir_writable(output_dir)
-
+        assert not output_dir.is_dir()
+        prepare_output_dir(output_dir)
         # Check that the output directory was created
         assert output_dir.is_dir()
+
+    def test_clears_existing_contents(self, tmp_path) -> None:
+        """Test that the output directory is cleared if it already exists."""
+        output_dir = tmp_path / "calibration_output"
+        output_dir.mkdir()
+        (output_dir / "old.png").write_text("old")
+        assert output_dir.is_dir()
+
+        prepare_output_dir(output_dir)
+
+        assert output_dir.is_dir()
+        assert not (output_dir / "old.png").exists()
+
+    def test_refuses_cwd(self, tmp_path, monkeypatch) -> None:
+        """Test that preparing the current working directory raises a PermissionError."""
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(PermissionError, match="cannot be used as the ouput directory"):
+            prepare_output_dir(tmp_path)
+
+    def test_refuses_parent_of_cwd(self, tmp_path, monkeypatch) -> None:
+        """Test that preparing the parent of the current working directory raises PermissionError."""
+        child = tmp_path / "child"
+        child.mkdir()
+        monkeypatch.chdir(child)
+        with pytest.raises(PermissionError, match="cannot be used as the ouput directory"):
+            prepare_output_dir(tmp_path)
+
+    def test_raises_when_directory_not_writable(self, tmp_path, mocker) -> None:
+        """Test that preparing a directory that is not writable raises a PermissionError."""
+        mocker.patch(
+            "ic_haus_magnetic_encoder_calibration.plotting.tempfile.TemporaryFile",
+            side_effect=PermissionError("denied"),
+        )
+        with pytest.raises(PermissionError):
+            prepare_output_dir(tmp_path / "calibration_output")
 
 
 class TestPlotRawWaveforms:

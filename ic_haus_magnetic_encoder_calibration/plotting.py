@@ -17,7 +17,7 @@ Each figure is saved as a PNG.
 
 import logging
 import math
-import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -44,20 +44,28 @@ _RESIDUAL_LABELS = [
 ]
 
 
-def create_output_dir_writable(output_dir: Path) -> None:
-    """Create the output directory if needed and check it is writable.
+def prepare_output_dir(output_dir: Path) -> None:
+    """Clear and recreate the output directory, then verify it is writable.
 
     Raises:
-        SystemExit: If the directory cannot be created or is not writable.
+        PermissionError: If the directory cannot be cleared, created or written to.
+
     """
-    try:
-        output_dir.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        raise SystemExit(f"Cannot create output directory '{output_dir}': {exc}") from exc
-    if not os.access(output_dir, os.W_OK):
-        raise SystemExit(
-            f"Output directory '{output_dir}' is not writable. Choose another directory."
+    # First, resolve the output directory and check against dangerous locations.
+    resolved = output_dir.resolve()
+    cwd = Path.cwd().resolve()
+    if resolved in (cwd, Path.home().resolve(), *cwd.parents):
+        # Refuse to use the current working directory, home directory, or any parent of the cwd.
+        raise PermissionError(
+            f"'{output_dir}' cannot be used as the ouput directory: choose another directory."
         )
+    # Then clear and recreate the directory.
+    if resolved.exists():
+        shutil.rmtree(resolved)
+    resolved.mkdir(parents=True)
+    # Probe with a real file.
+    with tempfile.TemporaryFile(dir=resolved):
+        pass
 
 
 def _save_figure(fig: Figure, path: Path) -> None:

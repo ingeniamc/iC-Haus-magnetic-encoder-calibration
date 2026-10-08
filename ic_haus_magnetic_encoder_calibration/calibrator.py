@@ -12,7 +12,6 @@ PDO exchange thread as the FSoE safety protocol.
 
 import json
 import logging
-import shutil
 import threading
 import time
 from collections import deque
@@ -49,6 +48,7 @@ from .plotting import (
     _plot_raw_waveforms,
     _plot_residuals_bar,
     _plot_residuals_trend,
+    prepare_output_dir,
     warm_matplotlib_cache,
 )
 
@@ -147,8 +147,9 @@ class _SingleEncoderCalibration:
             raise RuntimeError(msg)
         return self._cal
 
+    @staticmethod
     @contextmanager
-    def _saving_file(self) -> Generator[None, None, None]:
+    def _saving_file() -> Generator[None, None, None]:
         """Context manager for handling file-saving errors."""
         try:
             yield
@@ -798,9 +799,7 @@ class EncodersCalibrator:
         try:
             # Output directory preparation
             if self.writes_output:
-                if self._output_dir.exists():
-                    shutil.rmtree(self._output_dir)
-                self._output_dir.mkdir(parents=True, exist_ok=True)
+                prepare_output_dir(self._output_dir)
 
             # -- Setup phase 1: save state --
             for enc in encoders:
@@ -856,7 +855,6 @@ class EncodersCalibrator:
                     results: dict[int, CalibrationResult] = {}
                     for enc in encoders:
                         if enc.converged:
-                            # Then in the loop:
                             results[enc.number] = enc.finalize(
                                 self._output_dir, save_nonius_track=self._save_nonius_track
                             )

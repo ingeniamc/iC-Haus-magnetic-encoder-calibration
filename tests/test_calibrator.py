@@ -918,40 +918,39 @@ class TestAcquireRawData:
         assert result == {1: [10, 11], 2: [20, 21]}
 
 
-class TestSaveFile:
+class TestSaveFileMethod:
     def test_save_file_method(self, tmp_path) -> None:
         """The _saving_file method should create a file with the given content."""
         file_path = tmp_path / "test_file.txt"
         new_content = "New content"
 
         # Assuming the save_file method is a static method of EncodersCalibrator
-        _SingleEncoderCalibration._saving_file(file_path.write_text(new_content))
+        with _SingleEncoderCalibration._saving_file():
+            file_path.write_text(new_content)
 
         assert file_path.exists()
-        with open(file_path) as f:
-            assert f.read() == new_content
+        assert file_path.read_text() == "New content"
 
-    def test_save_file_overwrites_existing_file(self, tmp_path) -> None:
+    def test_overwrites_existing_file(self, tmp_path) -> None:
         """The _saving_file method should overwrite an existing file with new content."""
         file_path = tmp_path / "test_file.txt"
         initial_content = "Initial content"
         file_path.write_text(initial_content)
         new_content = "New content"
 
-        _SingleEncoderCalibration._saving_file(file_path.write_text(new_content))
+        with _SingleEncoderCalibration._saving_file():
+            file_path.write_text(new_content)
 
         assert file_path.exists()
-        with open(file_path) as f:
-            assert f.read() == new_content
+        assert file_path.read_text() == new_content
 
-    def test_save_file_reports_failure(self, tmp_path, caplog, mocker) -> None:
+    def test_logs_and_suppresses_os_error(self, tmp_path, caplog, mocker) -> None:
         """The _saving_file method should report a failure if the file cannot be written."""
         # Simulate a failure
         file_path = tmp_path / "test_file.txt"
         mocker.patch.object(type(file_path), "write_text", side_effect=OSError("disk full"))
-        sec = _SingleEncoderCalibration(mocker.MagicMock())
 
-        with caplog.at_level("ERROR"), sec._saving_file():
+        with caplog.at_level("ERROR"), _SingleEncoderCalibration._saving_file():
             file_path.write_text("Hello, world!")
 
         assert "Failed to save output: disk full" in caplog.text

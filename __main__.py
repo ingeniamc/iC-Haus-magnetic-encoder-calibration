@@ -18,7 +18,7 @@ from ic_haus_magnetic_encoder_calibration.motor_control import (
     DEFAULT_GEN_CURRENT,
     DEFAULT_GEN_FREQ,
 )
-from ic_haus_magnetic_encoder_calibration.plotting import create_output_dir_writable
+from ic_haus_magnetic_encoder_calibration.plotting import prepare_output_dir
 
 logger = logging.getLogger("ic_haus_magnetic_encoder_calibration")
 
@@ -225,7 +225,7 @@ def main() -> None:
         args.save_json,
         args.save_nonius_track,
     ]):
-        create_output_dir_writable(args.output_dir)
+        prepare_output_dir(args.output_dir)
 
     mc = MotionController()
     mc.communication.connect_servo_ethercat(
