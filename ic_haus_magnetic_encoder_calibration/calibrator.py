@@ -12,7 +12,6 @@ PDO exchange thread as the FSoE safety protocol.
 
 import json
 import logging
-import shutil
 import threading
 import time
 from collections import deque
@@ -46,6 +45,7 @@ from .plotting import (
     _plot_raw_waveforms,
     _plot_residuals_bar,
     _plot_residuals_trend,
+    prepare_output_dir,
     warm_matplotlib_cache,
 )
 
@@ -412,15 +412,18 @@ class _SingleEncoderCalibration:
                 exc_info=True,
             )
 
-    def export_data(self, output_dir: Path) -> None:
+    def export_iteration_data(self, output_dir: Path) -> None:
         """Export iteration log as JSON."""
-        if self.iteration_log:
-            json_path = output_dir / f"enc{self.number}_calibration_data.json"
-            json_path.write_text(
-                json.dumps(self.iteration_log, indent=2),
-                encoding="utf-8",
-            )
-            logger.info(f"Exported calibration data: {json_path}")
+        try:
+            if self.iteration_log:
+                json_path = output_dir / f"enc{self.number}_calibration_data.json"
+                json_path.write_text(
+                    json.dumps(self.iteration_log, indent=2),
+                    encoding="utf-8",
+                )
+                logger.info(f"Exported calibration data: {json_path}")
+        except Exception as e:
+            logger.error(f"Failed to export calibration data: {e}")
 
     def finalize(
         self,
@@ -597,6 +600,22 @@ class EncodersCalibrator:
         return enc
 
     @property
+    def writes_output(self) -> bool:
+        """Indicate whether the calibrator writes output files.
+
+        Returns:
+            True if any output files are configured to be saved, False otherwise.
+
+        """
+        return any((
+            self._save_raw_plots,
+            self._save_residual_bar_plots,
+            self._save_trend_plot,
+            self._save_json,
+            self._save_nonius_track,
+        ))
+
+    @property
     def encoders(self) -> list[Encoder]:
         """List of enrolled encoders.
 
@@ -765,6 +784,10 @@ class EncodersCalibrator:
 
         encoders = [_SingleEncoderCalibration(enc) for enc in self._encoders]
 
+        # -- Prepare output directory before changing encoder state --
+        if self.writes_output:
+            prepare_output_dir(self._output_dir)
+
         try:
             # -- Setup phase 1: save state --
             for enc in encoders:
@@ -778,13 +801,9 @@ class EncodersCalibrator:
             for enc in encoders:
                 enc.reset_analog()
 
-            # -- Clean output directory --
-            if self._output_dir.exists():
-                shutil.rmtree(self._output_dir)
-            self._output_dir.mkdir(parents=True, exist_ok=True)
-
             # -- Setup phase 4: data TPDO (register on servo) --
-            warm_matplotlib_cache()
+            if self.writes_output:
+                warm_matplotlib_cache()
             self._setup_data_tpdo()
 
             # -- Setup phase 5: FSoE (maps only, no PDO start) --
@@ -845,7 +864,7 @@ class EncodersCalibrator:
             finally:
                 if self._save_json:
                     for enc in encoders:
-                        enc.export_data(self._output_dir)
+                        enc.export_iteration_data(self._output_dir)
                 # Stop PDOs first (returns slave to pre-op), then remove maps.
                 self._motor.stop_pdos_and_fsoe()
                 self._teardown_data_tpdo()
