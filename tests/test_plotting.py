@@ -33,13 +33,13 @@ class TestOutputDir:
         assert not (output_dir / "old.png").exists()
 
     def test_refuses_cwd(self, tmp_path, monkeypatch) -> None:
-        """Test that preparing the current working directory raises a PermissionError."""
+        """Test if current working directory raises a PermissionError."""
         monkeypatch.chdir(tmp_path)
         with pytest.raises(PermissionError, match="cannot be used as the ouput directory"):
             prepare_output_dir(tmp_path)
 
     def test_refuses_parent_of_cwd(self, tmp_path, monkeypatch) -> None:
-        """Test that preparing the parent of the current working directory raises PermissionError."""
+        """Test if parent of current working directory raises PermissionError."""
         child = tmp_path / "child"
         child.mkdir()
         monkeypatch.chdir(child)
