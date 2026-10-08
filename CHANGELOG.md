@@ -1,4 +1,9 @@
 # Changelog
+## [Unreleased]
+### Added
+- Update mu_3sl library to version "3.4.5.1".
+- Include drive feedbacks configuration in drive config restore.
+- Archive previous run exported data on `calibration_output/previous_run` folder.
 
 ## [0.1.4] - 2026-09-01
 ### Added
