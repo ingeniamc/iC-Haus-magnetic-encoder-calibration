@@ -18,7 +18,6 @@ from ic_haus_magnetic_encoder_calibration.motor_control import (
     DEFAULT_GEN_CURRENT,
     DEFAULT_GEN_FREQ,
 )
-from ic_haus_magnetic_encoder_calibration.plotting import ensure_output_dir_writable
 
 logger = logging.getLogger("ic_haus_magnetic_encoder_calibration")
 
@@ -216,17 +215,6 @@ def main() -> None:
         format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
     )
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
-
-    # Check output directory
-    writes_output = any((
-        args.save_raw_plots,
-        args.save_residual_bar_plots,
-        args.save_trend_plot,
-        args.save_json,
-        args.save_nonius_track,
-    ))
-    if writes_output:
-        ensure_output_dir_writable(args.output_dir)
 
     mc = MotionController()
     mc.communication.connect_servo_ethercat(
