@@ -90,7 +90,7 @@ def prepare_output_dir(output_dir: Path) -> None:
                 shutil.move(str(entry), str(previous_run_dir / entry.name))
             logger.info(f"Archived previous calibration output to {previous_run_dir}")
 
-    except (OSError, SystemExit) as exc:
+    except OSError as exc:
         logger.error(f"Cannot save calibration outputs to '{output_dir}': {exc}.")
         raise SystemExit(f"Cannot save calibration outputs to '{output_dir}': {exc}.") from exc
 
