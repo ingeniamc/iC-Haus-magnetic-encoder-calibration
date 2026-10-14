@@ -35,7 +35,7 @@ class TestOutputDir:
     def test_refuses_cwd(self, tmp_path, monkeypatch) -> None:
         """Test if current working directory raises a PermissionError."""
         monkeypatch.chdir(tmp_path)
-        with pytest.raises(PermissionError, match="cannot be used as the ouput directory"):
+        with pytest.raises(PermissionError, match="cannot be used as the output directory"):
             prepare_output_dir(tmp_path)
 
     def test_refuses_parent_of_cwd(self, tmp_path, monkeypatch) -> None:
@@ -43,7 +43,7 @@ class TestOutputDir:
         child = tmp_path / "child"
         child.mkdir()
         monkeypatch.chdir(child)
-        with pytest.raises(PermissionError, match="cannot be used as the ouput directory"):
+        with pytest.raises(PermissionError, match="cannot be used as the output directory"):
             prepare_output_dir(tmp_path)
 
     def test_raises_when_directory_not_writable(self, tmp_path, mocker) -> None:

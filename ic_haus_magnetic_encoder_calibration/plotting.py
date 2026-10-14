@@ -57,7 +57,7 @@ def prepare_output_dir(output_dir: Path) -> None:
     if resolved in (cwd, Path.home().resolve(), *cwd.parents):
         # Refuse to use the current working directory, home directory, or any parent of the cwd.
         raise PermissionError(
-            f"'{output_dir}' cannot be used as the ouput directory: choose another directory."
+            f"'{output_dir}' cannot be used as the output directory: choose another directory."
         )
     # Then clear and recreate the directory.
     if resolved.exists():
