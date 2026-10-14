@@ -17,6 +17,7 @@ Each figure is saved as a PNG.
 
 import logging
 import math
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -41,6 +42,30 @@ _RESIDUAL_LABELS = [
     "N vosc",
     "N ph",
 ]
+
+
+def prepare_output_dir(output_dir: Path) -> None:
+    """Clear and recreate the output directory, then verify it is writable.
+
+    Raises:
+        PermissionError: If the directory cannot be cleared, created or written to.
+
+    """
+    # First, resolve the output directory and check against dangerous locations.
+    resolved = output_dir.resolve()
+    cwd = Path.cwd().resolve()
+    if resolved in (cwd, Path.home().resolve(), *cwd.parents):
+        # Refuse to use the current working directory, home directory, or any parent of the cwd.
+        raise PermissionError(
+            f"'{output_dir}' cannot be used as the output directory: choose another directory."
+        )
+    # Then clear and recreate the directory.
+    if resolved.exists():
+        shutil.rmtree(resolved)
+    resolved.mkdir(parents=True)
+    # Probe with a real file.
+    with tempfile.TemporaryFile(dir=resolved):
+        pass
 
 
 def _save_figure(fig: Figure, path: Path) -> None:
