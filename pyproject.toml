@@ -133,7 +133,7 @@ cmd = "mypy ic_haus_magnetic_encoder_calibration"
 # ---------------------------- Install test dependencies ----------------------------
 [tool.poe.tasks.install-test-deps]
 help = "Install the pinned Summit test framework (requires GitHub and Novanta network access)"
-cmd = "pip install git+ssh://git@github.com/CeleraMotion/summit-testing-framework.git@7d58fec6665a7afd5af95ae0aa7d31d9a42ff51a --index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com"
+cmd = "pip install -vvv git+ssh://git@github.com/CeleraMotion/summit-testing-framework.git@7d58fec6665a7afd5af95ae0aa7d31d9a42ff51a --index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com"
 
 # ----------------------------- Run unit tests -----------------------------
 [tool.poe.tasks.tests]
