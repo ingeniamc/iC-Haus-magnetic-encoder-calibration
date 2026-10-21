@@ -13,7 +13,7 @@ dependencies = [
     "ingenialink==7.6.3",
     "virtual_drive==0.1.2",
     "matplotlib>=3.9",
-    "mu-3sl==3.4.5.1",
+    "mu-3sl==3.4.3.1.post2",
     "numpy>=2.0",
 ]
 
@@ -50,7 +50,7 @@ priority = "supplemental"
 
 [tool.poetry.dependencies]
 # NOTE: when bumping mu-3sl version, also update [project] dependencies above and libs/README.md
-mu-3sl = {path = "libs/mu_3sl-3.4.5.1-py3-none-any.whl"}
+mu-3sl = {path = "libs/mu_3sl-3.4.3.1.post2-py3-none-any.whl"}
 
 # Dependencies to run poe tasks
 [tool.poetry.group.dev]
@@ -135,7 +135,7 @@ cmd = "mypy ic_haus_magnetic_encoder_calibration"
 help = "Install the pinned Summit test framework (requires GitHub and Novanta network access)"
 sequence = [
     { cmd = "python -m ensurepip --upgrade" },
-    { cmd = "python -m pip install git+ssh://git@github.com/CeleraMotion/summit-testing-framework.git@7d58fec6665a7afd5af95ae0aa7d31d9a42ff51a --index-url https://pypi.org/simple" },
+    { cmd = "python -m pip install git+ssh://git@github.com/CeleraMotion/summit-testing-framework.git@7d58fec6665a7afd5af95ae0aa7d31d9a42ff51a --index-url https://pypi.org/simple --extra-index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com" },
 ]
 
 # ----------------------------- Run unit tests -----------------------------
