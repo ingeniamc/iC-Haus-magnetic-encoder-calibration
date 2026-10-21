@@ -615,7 +615,7 @@ files = [
     {file = "cffi-2.1.1-cp315-cp315t-win_arm64.whl", hash = "sha256:d18e5ac0f2f03f4f518d3e23db0f0cad7faa1da8620e9c09461d443bbf6e6692"},
     {file = "cffi-2.1.1.tar.gz", hash = "sha256:dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be"},
 ]
-markers = {build = "python_version >= \"3.10\" and platform_python_implementation != \"PyPy\" and sys_platform == \"linux\"", dev = "python_version >= \"3.10\" and (sys_platform == \"linux\" or sys_platform == \"darwin\") and (platform_python_implementation != \"PyPy\" or sys_platform == \"darwin\")"}
+markers = {build = "sys_platform == \"linux\" and platform_python_implementation != \"PyPy\" and python_version >= \"3.10\"", dev = "(sys_platform == \"linux\" or sys_platform == \"darwin\") and (platform_python_implementation != \"PyPy\" or sys_platform == \"darwin\") and python_version >= \"3.10\""}
 
 [package.dependencies]
 pycparser = {version = "*", markers = "implementation_name != \"PyPy\""}
@@ -1324,7 +1324,7 @@ description = "cryptography is a package which provides cryptographic recipes an
 optional = false
 python-versions = "!=3.9.0,!=3.9.1,>=3.9"
 groups = ["build", "dev"]
-markers = "python_version >= \"3.10\" and sys_platform == \"linux\""
+markers = "sys_platform == \"linux\" and python_version >= \"3.10\""
 files = [
     {file = "cryptography-50.0.1-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:b8f852c65863251b9e3a1b8c150ce21e59b522dbb6a7d4bc80e680d38388e986"},
     {file = "cryptography-50.0.1-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:53e279950892dc102c6b4e52af03ae5ea92fac572a1ddab78ca73a997f62b69f"},
@@ -2029,7 +2029,7 @@ files = [
     {file = "importlib_metadata-9.0.1-py3-none-any.whl", hash = "sha256:bba5600596a7e21f3eef53281cf28d6a5195634d2f2b78ff9501a3272c6eaab0"},
     {file = "importlib_metadata-9.0.1.tar.gz", hash = "sha256:ab830580bc0ef3db61ce8fae716389e5462b67e033018bab6d8f80ef17172f99"},
 ]
-markers = {build = "python_version >= \"3.10\"", dev = "python_version < \"3.12\" and python_version >= \"3.10\""}
+markers = {build = "python_version >= \"3.10\"", dev = "python_version >= \"3.10\" and python_version < \"3.12\""}
 
 [package.dependencies]
 zipp = ">=3.20"
@@ -2069,14 +2069,14 @@ type = ["pytest-mypy"]
 
 [[package]]
 name = "ingenialink"
-version = "7.6.2.post414+pr.930.b2"
+version = "7.6.3"
 description = "IngeniaLink Communications Library"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "ingenialink-7.6.2.post414+pr.930.b2-py3-none-any.whl", hash = "sha256:f64e8011958f618f7f75f5e8df364a4a482ba5a5d7deae2eb9dc96efe43759d1"},
-    {file = "ingenialink-7.6.2.post414+pr.930.b2.tar.gz", hash = "sha256:52738e8ad497c7e0561e7d8c7455c26a137411af53fa8b0ceb6c1c1a0784a851"},
+    {file = "ingenialink-7.6.3-py3-none-any.whl", hash = "sha256:7257014c5dd7f2408904c2f2695c432985ad3a81a90df5ea201daeec5d27f720"},
+    {file = "ingenialink-7.6.3.tar.gz", hash = "sha256:8756130897e86e73265c718f6f0dabd449ff6132a5f2f2ef82cad7a6ce0bbf5b"},
 ]
 
 [package.dependencies]
@@ -2091,11 +2091,6 @@ ping3 = "5.1.5"
 pysoem = ">=1.1.13,<1.2.0"
 python-can = "4.6.1"
 
-[package.source]
-type = "legacy"
-url = "http://pypi.novanta.com/simple"
-reference = "novanta"
-
 [[package]]
 name = "ingenialogger"
 version = "0.3.0"
@@ -2109,32 +2104,27 @@ files = [
 
 [[package]]
 name = "ingeniamotion"
-version = "0.10.4.post572+develop.e021251"
+version = "0.10.5"
 description = "Motion library for Novanta servo drives"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "ingeniamotion-0.10.4.post572+develop.e021251-py3-none-any.whl", hash = "sha256:6eeba8aacb5e30310cb4850650d052ce8d2ac54234c6138efd62b26e527945c7"},
-    {file = "ingeniamotion-0.10.4.post572+develop.e021251.tar.gz", hash = "sha256:7655be980b698954b42deda6bbe109ef0a0282d2e2d78771afa8def71f915d26"},
+    {file = "ingeniamotion-0.10.5-py3-none-any.whl", hash = "sha256:de0fa2aa5a3c056fbd7ece3b0fff607ce00d9df334f7db500b98e44509ee653f"},
+    {file = "ingeniamotion-0.10.5.tar.gz", hash = "sha256:a1da9006a20032b01d9cbe73c9fd7ada055c0461b0afa29ab371d54b2adcdcea"},
 ]
 
 [package.dependencies]
 exceptiongroup = ">=1.3.0,<2.0.0"
 fsoe_master = {version = "0.2.1", optional = true, markers = "extra == \"fsoe\""}
 ifaddr = "0.2.0"
-ingenialink = ">=7.6.2"
+ingenialink = ">=7.6.3"
 ingenialogger = ">=0.2.1"
 numpy = ">=2.0,<2.1"
-virtual_drive = ">=0.1.0"
+virtual_drive = ">=0.1.2"
 
 [package.extras]
 fsoe = ["fsoe_master (==0.2.1)"]
-
-[package.source]
-type = "legacy"
-url = "http://pypi.novanta.com/simple"
-reference = "novanta"
 
 [[package]]
 name = "iniconfig"
@@ -3946,7 +3936,7 @@ files = [
     {file = "pycparser-3.0-py3-none-any.whl", hash = "sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992"},
     {file = "pycparser-3.0.tar.gz", hash = "sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29"},
 ]
-markers = {build = "python_version >= \"3.10\" and platform_python_implementation != \"PyPy\" and implementation_name != \"PyPy\" and sys_platform == \"linux\"", dev = "python_version >= \"3.10\" and (sys_platform == \"linux\" or sys_platform == \"darwin\") and (platform_python_implementation != \"PyPy\" or sys_platform == \"darwin\") and implementation_name != \"PyPy\""}
+markers = {build = "sys_platform == \"linux\" and platform_python_implementation != \"PyPy\" and implementation_name != \"PyPy\" and python_version >= \"3.10\"", dev = "(sys_platform == \"linux\" or sys_platform == \"darwin\") and (platform_python_implementation != \"PyPy\" or sys_platform == \"darwin\") and implementation_name != \"PyPy\" and python_version >= \"3.10\""}
 
 [[package]]
 name = "pygments"
@@ -4755,7 +4745,7 @@ description = "Fundamental algorithms for scientific computing in Python"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "python_version < \"3.12\" and python_version >= \"3.10\""
+markers = "python_version >= \"3.10\" and python_version < \"3.12\""
 files = [
     {file = "scipy-1.15.3-cp310-cp310-macosx_10_13_x86_64.whl", hash = "sha256:a345928c86d535060c9c2b25e71e87c39ab2f22fc96e9636bd74d1dbf9de448c"},
     {file = "scipy-1.15.3-cp310-cp310-macosx_12_0_arm64.whl", hash = "sha256:ad3432cb0f9ed87477a8d97f03b763fd1d57709f1bbde3c9369b1dff5503b253"},
@@ -4917,7 +4907,7 @@ description = "Python bindings to FreeDesktop.org Secret Service API"
 optional = false
 python-versions = ">=3.10"
 groups = ["build", "dev"]
-markers = "python_version >= \"3.10\" and sys_platform == \"linux\""
+markers = "sys_platform == \"linux\" and python_version >= \"3.10\""
 files = [
     {file = "secretstorage-3.5.0-py3-none-any.whl", hash = "sha256:0ce65888c0725fcb2c5bc0fdb8e5438eece02c523557ea40ce0703c266248137"},
     {file = "secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be"},
@@ -5153,27 +5143,22 @@ zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 
 [[package]]
 name = "virtual-drive"
-version = "0.1.1.post345+develop.ce01ac3"
+version = "0.1.2"
 description = "Emulates a Summit drive for development and testing purposes."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "virtual_drive-0.1.1.post345+develop.ce01ac3-py3-none-any.whl", hash = "sha256:c243604fd4a5bceef3c492a92bacd77852aa2c3a5d55d31b4c1070c985ce181e"},
+    {file = "virtual_drive-0.1.2-py3-none-any.whl", hash = "sha256:d64681c59e48401989ac0f831a29d100c1391ae1eef81be5804988e4f6e257eb"},
 ]
 
 [package.dependencies]
-ingenialink = ">=7.6.0"
+ingenialink = ">=7.6.3"
 numpy = ">=1.26.0"
 scipy = [
     {version = ">=1.12.0,<1.18.0", markers = "python_version < \"3.12\""},
     {version = ">=1.18.0,<1.19.0", markers = "python_version >= \"3.12\""},
 ]
-
-[package.source]
-type = "legacy"
-url = "http://pypi.novanta.com/simple"
-reference = "novanta"
 
 [[package]]
 name = "virtualenv"
@@ -5387,7 +5372,7 @@ files = [
     {file = "zipp-4.1.0-py3-none-any.whl", hash = "sha256:25ad4e16390cd314347dd8f1de67a2ac538ae658ed4ab9db16029c07c188e97f"},
     {file = "zipp-4.1.0.tar.gz", hash = "sha256:4cb57381f544315db7688e976e922a2b18cdb513d21cc194eb42232ba2a3e602"},
 ]
-markers = {build = "python_version >= \"3.10\"", dev = "python_version < \"3.12\" and python_version >= \"3.10\""}
+markers = {build = "python_version >= \"3.10\"", dev = "python_version >= \"3.10\" and python_version < \"3.12\""}
 
 [package.extras]
 check = ["pytest-checkdocs (>=2.14)", "pytest-ruff (>=0.2.1) ; sys_platform != \"cygwin\""]
@@ -5513,4 +5498,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<3.13"
-content-hash = "d077cb11889c56034f8b4404e03a633e6869424a77fa1e2a5603951de6d0b75f"
+content-hash = "3c6ac20fb325e6ae15952e11309cb019ffd12d9485432e620e4230c50125871f"
