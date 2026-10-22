@@ -9,9 +9,9 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.9,<3.13"
 dependencies = [
-    "ingeniamotion[fsoe]>=0.10.2",
-    "ingenialink==7.6.2.post414+pr.930.b2",
-    "virtual_drive==0.1.1.post345+develop.ce01ac3",
+    "ingeniamotion[fsoe]>=0.10.5",
+    "ingenialink==7.6.3",
+    "virtual_drive==0.1.2",
     "matplotlib>=3.9",
     "mu-3sl==3.4.5.1",
     "numpy>=2.0",
@@ -77,6 +77,7 @@ optional = true
 pytest = "==8.4.1"
 pytest-cov = "==7.0.0"
 pytest-mock = "==3.15.1"
+pytest-env = ">=1.1.5"
  
 # Dependencies for build task 
 [tool.poetry.group.build]
@@ -129,10 +130,15 @@ sequence = ["ruff-format", "ruff-check-fix"]
 help = "Run type checks"
 cmd = "mypy ic_haus_magnetic_encoder_calibration"
 
-# ---------------------------- Install Novanta-only test dependencies -----------------------------
+# ---------------------------- Install test dependencies ----------------------------
 [tool.poe.tasks.install-test-deps]
-help = "Install the Novanta-only test framework (requires Novanta network)"
-cmd = "pip install summit-testing-framework==0.3.1.post513+develop.e3e789a --index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com"# ----------------------------- Run unit tests -----------------------------
+help = "Install the pinned Summit test framework (requires GitHub and Novanta network access)"
+sequence = [
+    { cmd = "python -m ensurepip --upgrade" },
+    { cmd = "python -m pip install git+ssh://git@github.com/CeleraMotion/summit-testing-framework.git@7d58fec6665a7afd5af95ae0aa7d31d9a42ff51a --index-url https://pypi.org/simple --extra-index-url https://pypi.novanta.com/simple --trusted-host pypi.novanta.com" },
+]
+
+# ----------------------------- Run unit tests -----------------------------
 [tool.poe.tasks.tests]
 cmd = "python -I -m pytest tests -m \"not hardware\""
 
@@ -141,11 +147,4 @@ cmd = "python -I -m pytest tests -m \"not hardware\""
 help = "Build standalone CLI executable with PyInstaller"
 cmd = "pyinstaller ic_haus_magnetic_encoder_calibration.spec"
 
-# -----------------------------------------------------------------------
-#                              PYTEST CONFIG
-# -----------------------------------------------------------------------
-[tool.pytest.ini_options]
-markers = [
-    "hardware: Tests that require a physical drive (excluded from CI)",
-]
 
