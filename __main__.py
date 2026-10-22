@@ -11,13 +11,14 @@ from ingeniamotion.enums import SensorType
 from ic_haus_magnetic_encoder_calibration.calibrator import (
     DEFAULT_CAPTURE_DURATION_S,
     DEFAULT_PDO_RATE_S,
-    EncoderCalibrator,
+    EncodersCalibrator,
 )
 from ic_haus_magnetic_encoder_calibration.config_loader import load_encoders_configuration_file
 from ic_haus_magnetic_encoder_calibration.motor_control import (
     DEFAULT_GEN_CURRENT,
     DEFAULT_GEN_FREQ,
 )
+from ic_haus_magnetic_encoder_calibration.plotting import prepare_output_dir
 
 logger = logging.getLogger("ic_haus_magnetic_encoder_calibration")
 
@@ -171,9 +172,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--save-nonius-track",
         type=_parse_bool,
-        default=False,
+        default=True,
         metavar="BOOL",
-        help="Save nonius track plots (default: false)",
+        help="Save nonius track plots (default: true)",
     )
     parser.add_argument(
         "--drive-config",
@@ -216,6 +217,16 @@ def main() -> None:
     )
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
+    # Prepare output directory
+    if any([
+        args.save_raw_plots,
+        args.save_residual_bar_plots,
+        args.save_trend_plot,
+        args.save_json,
+        args.save_nonius_track,
+    ]):
+        prepare_output_dir(args.output_dir)
+
     mc = MotionController()
     mc.communication.connect_servo_ethercat(
         args.interface,
@@ -227,7 +238,7 @@ def main() -> None:
         mc.configuration.load_configuration(str(args.drive_config))
         logger.info(f"Loaded configuration: {args.drive_config}")
 
-    calibrator = EncoderCalibrator(
+    calibrator = EncodersCalibrator(
         mc,
         axis=args.axis,
         max_iterations=args.max_iterations,

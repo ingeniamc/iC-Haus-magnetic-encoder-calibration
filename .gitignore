@@ -26,8 +26,9 @@ _build
 /Pipfile.lock
 /.venv*
 
-# Test files
+# Test files and outputs
 /pytest_reports/
+tests/outputs/
 
 # Local wheel dependencies (README is tracked, everything else is ignored)
 /libs/*

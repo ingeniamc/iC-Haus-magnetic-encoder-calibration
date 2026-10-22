@@ -13,11 +13,15 @@ import math
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ingeniamotion import MotionController
 from ingeniamotion.enums import OperationMode, SensorType
-from ingeniamotion.fsoe_master.handler import FSoEMasterHandler  # noqa: TC002
+from ingeniamotion.feedbacks import FeedbacksConfiguration
+
+if TYPE_CHECKING:
+    from ingeniamotion.fsoe_master.handler import FSoEMasterHandler
+
 
 logger = logging.getLogger(__name__)
 
@@ -208,32 +212,61 @@ class MotorControl:
 
     # -- Motor control --
 
-    def configure_encoders(
+    def get_drive_feedbacks_config(self) -> FeedbacksConfiguration:
+        """Get the current drive feedbacks configuration.
+
+        Returns:
+            The current drive feedbacks configuration.
+        """
+        axis_feedbacks = self._mc.motion_nodes["default"].get_axis(self._axis).feedbacks
+        return axis_feedbacks.get_configuration()
+
+    def set_drive_feedbacks_config(
+        self,
+        config: FeedbacksConfiguration,
+    ) -> None:
+        """Set the drive feedbacks configuration.
+
+        Args:
+            config: The new drive feedbacks configuration to apply.
+        """
+        axis_feedbacks = self._mc.motion_nodes["default"].get_axis(self._axis).feedbacks
+        axis_feedbacks.set_configuration(config)
+
+    def configure_drive_feedbacks(
         self,
         encoder_sensor_types: list[SensorType],
     ) -> None:
-        """Configure feedback sensors for encoders and internal generator.
+        """Configure drive feedback sensors.
+
+        Set all feedback sensors to the internal generator by default,
+        then override with the provided encoder sensor types.
+        Auxiliary feedback is set to the first encoder,
+        and reference feedback to the second if available.
 
         Args:
             encoder_sensor_types: Sensor types for each enrolled encoder.
                 The first is set as auxiliary feedback, the second (if any)
                 as reference feedback.
+
+        Raises:
+            ValueError: If no encoder sensor types are provided.
         """
-        self._mc.configuration.set_commutation_feedback(SensorType.INTGEN, axis=self._axis)
-        self._mc.configuration.set_velocity_feedback(SensorType.INTGEN, axis=self._axis)
-        self._mc.configuration.set_position_feedback(SensorType.INTGEN, axis=self._axis)
-        self._mc.configuration.set_auxiliar_feedback(SensorType.INTGEN, axis=self._axis)
-        self._mc.configuration.set_reference_feedback(SensorType.INTGEN, axis=self._axis)
-        if len(encoder_sensor_types) > 0:
-            self._mc.configuration.set_auxiliar_feedback(
-                encoder_sensor_types[0],
-                axis=self._axis,
-            )
-        if len(encoder_sensor_types) > 1:
-            self._mc.configuration.set_reference_feedback(
-                encoder_sensor_types[1],
-                axis=self._axis,
-            )
+        if not encoder_sensor_types:
+            raise ValueError("No encoder sensor types provided. Cannot set drive feedbacks.")
+        axis_feedbacks = self._mc.motion_nodes["default"].get_axis(self._axis).feedbacks
+        internal_generator = axis_feedbacks.get_sensor(SensorType.INTGEN)
+        axis_feedbacks.update_configuration({
+            axis_feedbacks.commutation: internal_generator,
+            axis_feedbacks.velocity: internal_generator,
+            axis_feedbacks.position: internal_generator,
+            axis_feedbacks.auxiliary: axis_feedbacks.get_sensor(
+                encoder_sensor_types[0]
+            ),  # Set the first encoder as auxiliary feedback
+            axis_feedbacks.reference: axis_feedbacks.get_sensor(encoder_sensor_types[1])
+            if len(encoder_sensor_types) > 1
+            else internal_generator,  # Set the second encoder as reference feedback if available
+        })
         logger.info("Encoder feedback configured.")
 
     def _start_motor(self) -> None:
