@@ -9,6 +9,18 @@ def ALL_PYTHON_VERSIONS = ["3.9", "3.12"] as Set
 def PYTHON_VERSION_MIN = "3.9"
 def PYTHON_VERSION_MAX = "3.12"
 def DEFAULT_PYTHON_VERSION = PYTHON_VERSION_MIN
+def GITHUB_SSH_CREDENTIALS_ID = 'GithubSSH'
+
+def withGithubSsh = { Closure body ->
+    withCredentials([sshUserPrivateKey(
+        credentialsId: GITHUB_SSH_CREDENTIALS_ID,
+        keyFileVariable: 'GITHUB_SSH_KEY'
+    )]) {
+        withEnv(["GIT_SSH_COMMAND=ssh -i \"${env.GITHUB_SSH_KEY}\" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"]) {
+            body()
+        }
+    }
+}
 
 VEnvManager venvManager = new VEnvManager(
     pipeline: this,
@@ -119,8 +131,10 @@ pipeline {
                 stage('Install test dependencies') {
                     steps {
                         script {
-                            venvManager.forEachEnvironment() { venv ->
-                                venv.run("poetry run poe install-test-deps")
+                            withGithubSsh {
+                                venvManager.forEachEnvironment() { venv ->
+                                    venv.run("poetry run poe install-test-deps")
+                                }
                             }
                         }
                     }

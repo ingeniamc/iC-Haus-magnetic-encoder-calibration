@@ -1,5 +1,5 @@
 # Changelog
-## [Unreleased]
+## [0.1.5] - 2026-10-23
 ### Added
 - Update mu_3sl library to version "3.4.5.1".
 - Include drive feedbacks configuration in drive config restore.
