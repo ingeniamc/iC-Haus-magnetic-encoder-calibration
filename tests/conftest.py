@@ -5,8 +5,7 @@ import pytest
 from ic_haus_magnetic_encoder_calibration.config_loader import EncoderRegisterConfig
 
 pytest_plugins = [
-    "summit_testing_framework.pytest_addoptions",
-    "summit_testing_framework.setup_fixtures",
+    "summit_testing_framework",
 ]
 
 
