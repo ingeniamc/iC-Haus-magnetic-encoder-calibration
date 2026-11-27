@@ -7,7 +7,7 @@ authors = [
   { name = "Novanta", email = "support@ingeniamc.com" }
 ]
 readme = "README.md"
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.11"
 dependencies = [
     "ingeniamotion[fsoe]>=0.10.5",
     "ingenialink==7.6.3",
@@ -83,7 +83,7 @@ pytest-env = ">=1.1.5"
 [tool.poetry.group.build]
 optional = true
 [tool.poetry.group.build.dependencies]
-pyinstaller = {version = "^6.6.0", python = ">=3.9,<3.15"}
+pyinstaller = {version = "^6.6.0", python = ">=3.11,<3.15"}
 twine = "^5.0.0"
 
 

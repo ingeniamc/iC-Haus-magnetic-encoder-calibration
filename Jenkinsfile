@@ -5,9 +5,9 @@ import python.VEnvManager
 def SW_NODE = "windows-slave"
 def WIN_DOCKER_IMAGE = "ingeniacontainers.azurecr.io/win-python-builder:1.9"
 
-def ALL_PYTHON_VERSIONS = ["3.9", "3.12"] as Set
-def PYTHON_VERSION_MIN = "3.9"
-def PYTHON_VERSION_MAX = "3.12"
+def ALL_PYTHON_VERSIONS = ["3.11", "3.12", "3.13", "3.14"] as Set
+def PYTHON_VERSION_MIN = "3.11"
+def PYTHON_VERSION_MAX = "3.14"
 def DEFAULT_PYTHON_VERSION = PYTHON_VERSION_MIN
 def GITHUB_SSH_CREDENTIALS_ID = 'GithubSSH'
 
@@ -34,7 +34,7 @@ pipeline {
         choice(
             name: 'PYTHON_VERSIONS',
             choices: ['MIN_MAX', 'MIN', 'MAX'],
-            description: 'Python version(s) to run tests with. MIN=3.9, MAX=3.12, MIN_MAX=both 3.9 and 3.12.'
+            description: 'Python version(s) to run tests with. MIN=3.11, MAX=3.14, MIN_MAX=both 3.11 and 3.14.'
         )
     }
     options {

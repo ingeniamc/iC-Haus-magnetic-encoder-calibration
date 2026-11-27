@@ -13,7 +13,7 @@ encoder's EEPROM.
 
 ## Prerequisites
 
-- Python 3.9 or 3.12
+- Python 3.11, 3.12, 3.13, or 3.14
 - A Novanta/Ingenia drive with iC-MU encoder(s) connected via EtherCAT
 - The XDF dictionary file for your drive
 - An EtherCAT network interface (e.g. `\Device\NPF_{...}`)
